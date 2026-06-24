@@ -243,8 +243,6 @@ class AuthService {
         }
     }
 
-    /** Resolve a possibly-relative URL against a base. */
-    private fun resolveUrl(possiblyRelative: String, base: String): String {
     /** Resolve a possibly-relative URL against a base.
      *  ForgeRock/AldiTalk liefert Redirects wie '//user/auth/account-overview/'
      *  Obwohl das nach RFC protokoll-relativ (Host='user') waere, ist 'user' hier
@@ -260,6 +258,5 @@ class AuthService {
             return "https://$baseHost/${possiblyRelative.substring(2)}"
         }
         return URL(URL(base), possiblyRelative).toString()
-    }
     }
 }
