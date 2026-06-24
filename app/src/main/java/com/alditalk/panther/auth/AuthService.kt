@@ -97,22 +97,10 @@ class AuthService {
                 }
             }
             Log.e(TAG, "Step1: powMessage-Laenge=${powMessage.length}")
-            // Lokalisiere 'var difficulty' (matched) und 'var work' (matcht nicht)
-            val diffIdx = powMessage.indexOf("var difficulty")
-            val workIdx = powMessage.indexOf("var work")
-            Log.e(TAG, "Step1: idx(var difficulty)=$diffIdx, idx(var work)=$workIdx")
-            // Zeige Bereich zwischen 'var difficulty' und nach 'var work' als Codepoints
-            if (diffIdx >= 0) {
-                val regionStart = diffIdx
-                val regionEnd = if (workIdx >= 0) (workIdx + 40) else (diffIdx + 80)
-                val region = powMessage.substring(regionStart, regionEnd.coerceAtMost(powMessage.length))
-                val cps = region.codePoints().toArray()
-                val cpStr = cps.joinToString(" ") { String.format("U+%04X", it) }
-                Log.e(TAG, "Step1: REGION[$regionStart..$regionEnd] CODEPOINTS: $cpStr")
-                Log.e(TAG, "Step1: REGION-TEXT='$region'")
-            }
-            val workMatch = Regex("""var work = "([^"]+)""""").find(powMessage)
-            val diffMatch = Regex("""var difficulty = (\d+)""").find(powMessage)
+            // Bugfix: Regex mit normalem String statt raw-string, da """([^"]+)""""
+            // ein zusaetzliches " am Pattern-Ende erzeugte und nie matchte.
+            val workMatch = Regex("var work = \"([^\"]+)\"").find(powMessage)
+            val diffMatch = Regex("var difficulty = (\\d+)").find(powMessage)
             Log.e(TAG, "Step1: workMatch=${if (workMatch != null) "OK:" + workMatch.groupValues[1] else "NULL"}, diffMatch=${if (diffMatch != null) "OK:" + diffMatch.groupValues[1] else "NULL"}")
             if (workMatch == null || diffMatch == null) {
                 return@withContext LoginResult(false, error = "PoW-Parameter nicht gefunden")
