@@ -73,7 +73,7 @@ class AuthService {
 
             val step1Resp = client.newCall(step1).execute()
             val step1Body = step1Resp.body?.string() ?: ""
-            Log.d(TAG, "Step1: HTTP ${step1Resp.code}, Body-Laenge=${step1Body.length}, Body=${step1Body.take(800)}")
+            Log.e(TAG, "Step1: HTTP ${step1Resp.code}, Body-Laenge=${step1Body.length}, Body=${step1Body.take(800)}")
             if (!step1Resp.isSuccessful) {
                 return@withContext LoginResult(false, error = "Step 1 failed: ${step1Resp.code}")
             }
@@ -82,10 +82,10 @@ class AuthService {
             // Extract PoW params from TextOutputCallback
             var powMessage = ""
             val callbacks = data.getJSONArray("callbacks")
-            Log.d(TAG, "Step1: ${callbacks.length()} Callbacks erhalten")
+            Log.e(TAG, "Step1: ${callbacks.length()} Callbacks erhalten")
             for (i in 0 until callbacks.length()) {
                 val cb = callbacks.getJSONObject(i)
-                Log.d(TAG, "Step1: Callback[$i] type=${cb.getString("type")}")
+                Log.e(TAG, "Step1: Callback[$i] type=${cb.getString("type")}")
                 if (cb.getString("type") == "TextOutputCallback") {
                     val outputs = cb.getJSONArray("output")
                     for (j in 0 until outputs.length()) {
@@ -94,7 +94,7 @@ class AuthService {
                     }
                 }
             }
-            Log.d(TAG, "Step1: powMessage-Laenge=${powMessage.length}, Inhalt=${powMessage.take(300)}")
+            Log.e(TAG, "Step1: powMessage-Laenge=${powMessage.length}, Inhalt=${powMessage.take(300)}")
             val workMatch = Regex("""var work = "([^"]+)""""").find(powMessage)
             val diffMatch = Regex("""var difficulty = (\d+)""").find(powMessage)
             if (workMatch == null || diffMatch == null) {
@@ -102,9 +102,9 @@ class AuthService {
             }
             val workUuid = workMatch.groupValues[1]
             val difficulty = diffMatch.groupValues[1].toInt()
-            Log.d(TAG, "PoW: work=$workUuid, diff=$difficulty")
+            Log.e(TAG, "PoW: work=$workUuid, diff=$difficulty")
             val nonce = solvePow(workUuid, difficulty)
-            Log.d(TAG, "PoW gelöst: nonce=$nonce")
+            Log.e(TAG, "PoW gelöst: nonce=$nonce")
 
             // ── Step 2: Submit credentials — ALL values as strings ──
             for (i in 0 until callbacks.length()) {
@@ -152,7 +152,7 @@ class AuthService {
                     .path("/")
                     .build())
             )
-            Log.d(TAG, "TokenID erhalten, Cookie gesetzt")
+            Log.e(TAG, "TokenID erhalten, Cookie gesetzt")
 
             // ── Step 3: OAuth2 Authorize with PKCE ──
             val pkce = generatePkce()
@@ -185,7 +185,7 @@ class AuthService {
             if (location.isNullOrEmpty()) {
                 return@withContext LoginResult(false, error = "Kein Location-Header im OAuth-Response")
             }
-            Log.d(TAG, "OAuth2 → ${location.take(80)}...")
+            Log.e(TAG, "OAuth2 → ${location.take(80)}...")
 
             // ── Step 4: Follow redirect chain manually (up to 8 hops) ──
             // Use a nullable var guarded by the while-condition so Kotlin smart
@@ -201,7 +201,7 @@ class AuthService {
                     .get()
                     .build()
                 val hopResp = client.newCall(hopReq).execute()
-                Log.d(TAG, "Hop $hop → ${hopResp.code} ${resolved.take(60)}")
+                Log.e(TAG, "Hop $hop → ${hopResp.code} ${resolved.take(60)}")
 
                 if (hopResp.code in 301..308) {
                     nextUrl = hopResp.headers["Location"]
@@ -211,7 +211,7 @@ class AuthService {
                     }
                 } else {
                     hopResp.close()
-                    Log.d(TAG, "Redirect-Kette abgeschlossen nach $hop Hops")
+                    Log.e(TAG, "Redirect-Kette abgeschlossen nach $hop Hops")
                     break
                 }
                 hop++
