@@ -197,23 +197,30 @@ class AuthService {
             // casts `nextUrl` to non-null inside the body (a plain `var currentUrl
             // = location` would infer String? even though we null-checked above).
             var nextUrl: String? = location
+            // Basis-URL fuer relative Redirects: mit jedem Hop aktualisieren,
+            // damit Location-Header wie '/user/...' gegen die korrekte Domain
+            // aufgeloest werden (vorher immer gegen die urspruengliche authUrl).
+            var baseUrl: String = authUrl.toString()
             var hop = 0
             while (nextUrl != null && hop < 8) {
-                val resolved = resolveUrl(nextUrl, authUrl.toString())
+                val resolved = resolveUrl(nextUrl, baseUrl)
+                Log.e(TAG, "Hop $hop: nextUrl='$nextUrl' -> resolved='${resolved.take(120)}'")
                 val hopReq = Request.Builder()
                     .url(resolved)
                     .header("User-Agent", AuthConfig.UA)
                     .get()
                     .build()
                 val hopResp = client.newCall(hopReq).execute()
-                Log.e(TAG, "Hop $hop → ${hopResp.code} ${resolved.take(60)}")
+                val locHdr = hopResp.headers["Location"]
+                Log.e(TAG, "Hop $hop → ${hopResp.code} ${resolved.take(60)} | Location=$locHdr")
 
                 if (hopResp.code in 301..308) {
-                    nextUrl = hopResp.headers["Location"]
                     hopResp.close()
-                    if (nextUrl == null) {
+                    if (locHdr.isNullOrEmpty()) {
                         return@withContext LoginResult(false, error = "Hop $hop: kein Location")
                     }
+                    nextUrl = locHdr
+                    baseUrl = resolved  // Basis fuer naechsten Hop aktualisieren
                 } else {
                     hopResp.close()
                     Log.e(TAG, "Redirect-Kette abgeschlossen nach $hop Hops")
