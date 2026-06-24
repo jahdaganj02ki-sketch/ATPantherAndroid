@@ -39,6 +39,58 @@ class AldiTalkApi(private val client: OkHttpClient) {
         "X-TRANSACTION-ID" to "T_${UUID.randomUUID()}",
     )
 
+    /**
+     * Ermittelt die contractId (subscriptionId) automatisch aus der
+     * navigation-list (customer-master-data BFF) OHNE Eingabe.
+     * Der Endpunkt braucht keine Parameter – die Authentifizierung läuft
+     * über die nach dem Login gesetzten Session-Cookies.
+     * Liefert userDetails.subscriptions[0].contractId.
+     * Bei mehreren Verträgen wird der zum [msisdn] passende gewählt.
+     */
+    suspend fun resolveContractId(msisdn: String): String? = withContext(Dispatchers.IO) {
+        try {
+            val url = ("${AuthConfig.PORTAL}/scs/bff/scs-207-customer-master-data-bff"
+                    + "/customer-master-data/v1/navigation-list").toHttpUrl()
+
+            val request = Request.Builder()
+                .url(url)
+                .apply { bffHeaders().forEach { (k, v) -> header(k, v) } }
+                .header("User-Agent", AuthConfig.UA)
+                .get()
+                .build()
+
+            val response = client.newCall(request).execute()
+            if (!response.isSuccessful) {
+                Log.e(TAG, "resolveContractId failed: ${response.code}")
+                return@withContext null
+            }
+
+            val json = JSONObject(response.body!!.string())
+            val subs = json.optJSONObject("userDetails")?.optJSONArray("subscriptions")
+            if (subs == null || subs.length() == 0) {
+                Log.e(TAG, "navigation-list: keine subscriptions")
+                return@withContext null
+            }
+
+            // 1) bevorzugt: Eintrag, dessen msisdn zur Rufnummer passt
+            for (i in 0 until subs.length()) {
+                val s = subs.getJSONObject(i)
+                if (s.optString("msisdn") == msisdn) {
+                    val cid = s.optString("contractId")
+                    Log.d(TAG, "contractId fuer $msisdn: $cid")
+                    return@withContext cid
+                }
+            }
+            // 2) Fallback: erster Eintrag
+            val cid = subs.getJSONObject(0).optString("contractId")
+            Log.d(TAG, "contractId (fallback): $cid")
+            cid
+        } catch (e: Exception) {
+            Log.e(TAG, "Fehler bei resolveContractId", e)
+            null
+        }
+    }
+
     /** Fetch offers and extract remaining data volume. */
     suspend fun getRemainingData(contractId: String): DataStatus? = withContext(Dispatchers.IO) {
         try {

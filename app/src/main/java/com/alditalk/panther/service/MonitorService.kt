@@ -25,7 +25,6 @@ class MonitorService : Service() {
 
         const val EXTRA_PHONE = "phone"
         const val EXTRA_PASSWORD = "password"
-        const val EXTRA_CONTRACT_ID = "contract_id"
         const val EXTRA_THRESHOLD_MB = "threshold_mb"
         const val EXTRA_INTERVAL_SEC = "interval_sec"
         const val ACTION_STOP = "com.alditalk.panther.STOP"
@@ -52,7 +51,6 @@ class MonitorService : Service() {
 
         val phone = intent?.getStringExtra(EXTRA_PHONE) ?: ""
         val password = intent?.getStringExtra(EXTRA_PASSWORD) ?: ""
-        val contractId = intent?.getStringExtra(EXTRA_CONTRACT_ID) ?: "31376559"
         val thresholdMb = intent?.getFloatExtra(EXTRA_THRESHOLD_MB, 250f) ?: 250f
         val intervalSec = intent?.getIntExtra(EXTRA_INTERVAL_SEC, 60) ?: 60
 
@@ -70,7 +68,7 @@ class MonitorService : Service() {
         isRunning = true
         val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
         serviceJob = scope.launch {
-            monitorLoop(phone, password, contractId, thresholdMb, intervalSec)
+            monitorLoop(phone, password, thresholdMb, intervalSec)
         }
 
         return START_STICKY
@@ -88,7 +86,6 @@ class MonitorService : Service() {
     private suspend fun monitorLoop(
         phone: String,
         password: String,
-        contractId: String,
         thresholdMb: Float,
         intervalSec: Int,
     ) {
@@ -112,6 +109,19 @@ class MonitorService : Service() {
 
         logDao.insert(LogEntry(type = "CHECK", message = "Login erfolgreich"))
         val api = AldiTalkApi(loginResult.client)
+
+        // contractId automatisch ermitteln (keine Eingabe noetig)
+        val contractId = api.resolveContractId(phone)
+        if (contractId.isNullOrEmpty()) {
+            val msg = "Vertrags-ID konnte nicht ermittelt werden"
+            Log.e(TAG, msg)
+            logDao.insert(LogEntry(type = "CHECK", message = msg))
+            updateNotification(msg)
+            broadcastStatus(msg, -1f)
+            stopSelf()
+            return
+        }
+        logDao.insert(LogEntry(type = "CHECK", message = "Vertrags-ID erkannt: $contractId"))
 
         while (isRunning && serviceJob?.isActive == true) {
             try {

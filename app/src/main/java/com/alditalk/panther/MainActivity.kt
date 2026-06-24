@@ -29,7 +29,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var etPassword: TextInputEditText
     private lateinit var etThreshold: TextInputEditText
     private lateinit var etInterval: TextInputEditText
-    private lateinit var etContractId: TextInputEditText
     private lateinit var tvStatus: android.widget.TextView
     private lateinit var btnToggle: MaterialButton
     private lateinit var btnSave: MaterialButton
@@ -54,7 +53,6 @@ class MainActivity : AppCompatActivity() {
         etPassword = findViewById(R.id.etPassword)
         etThreshold = findViewById(R.id.etThreshold)
         etInterval = findViewById(R.id.etInterval)
-        etContractId = findViewById(R.id.etContractId)
         tvStatus = findViewById(R.id.tvStatus)
         btnToggle = findViewById(R.id.btnToggleService)
         btnSave = findViewById(R.id.btnSaveCredentials)
@@ -136,12 +134,10 @@ class MainActivity : AppCompatActivity() {
 
         val threshold = etThreshold.text.toString().trim().toFloatOrNull() ?: 250f
         val interval = etInterval.text.toString().trim().toIntOrNull() ?: 60
-        val contractId = etContractId.text.toString().trim()
 
         val intent = Intent(this, MonitorService::class.java).apply {
             putExtra(MonitorService.EXTRA_PHONE, phone)
             putExtra(MonitorService.EXTRA_PASSWORD, password)
-            putExtra(MonitorService.EXTRA_CONTRACT_ID, contractId)
             putExtra(MonitorService.EXTRA_THRESHOLD_MB, threshold)
             putExtra(MonitorService.EXTRA_INTERVAL_SEC, interval)
         }
