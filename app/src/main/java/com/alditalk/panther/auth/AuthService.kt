@@ -61,14 +61,16 @@ class AuthService {
 
         try {
             // ── Step 1: Get login callbacks ──
-            // WICHTIG: leerer Body mit Content-Type application/json (wie in der
-            // Python-Referenz data=''). Ein leerer FormBody wuerde application/
-            // x-www-form-urlencoded setzen und ForgeRock antwortet ohne PoW-Callback.
+            // WICHTIG: Echter LEERER Body (0 Bytes) mit Content-Type application/json,
+            // GENAU wie Python data="" . "{}" (2 Bytes) wuerde ForgeRock veranlassen,
+            // die PoW-Challenge als JavaScript-Funktion statt als var-Zuweisung zu
+            // liefern -> Regex findet nichts. Accept-Language wie Python-Referenz.
             val step1 = Request.Builder()
                 .url(AuthConfig.AUTH_EP)
                 .header("User-Agent", AuthConfig.UA)
+                .header("Accept-Language", "de-DE,de;q=0.9")
                 .header("Accept", "application/json")
-                .post("{}".toRequestBody(AuthConfig.JSON_MEDIA))
+                .post("".toRequestBody(AuthConfig.JSON_MEDIA))
                 .build()
 
             val step1Resp = client.newCall(step1).execute()
@@ -94,7 +96,7 @@ class AuthService {
                     }
                 }
             }
-            Log.e(TAG, "Step1: powMessage-Laenge=${powMessage.length}, Inhalt=${powMessage.take(300)}")
+            Log.e(TAG, "Step1: powMessage-Laenge=${powMessage.length}, VOLLSTAENDIG=$powMessage")
             val workMatch = Regex("""var work = "([^"]+)""""").find(powMessage)
             val diffMatch = Regex("""var difficulty = (\d+)""").find(powMessage)
             if (workMatch == null || diffMatch == null) {
