@@ -72,16 +72,20 @@ class AuthService {
                 .build()
 
             val step1Resp = client.newCall(step1).execute()
+            val step1Body = step1Resp.body?.string() ?: ""
+            Log.d(TAG, "Step1: HTTP ${step1Resp.code}, Body-Laenge=${step1Body.length}, Body=${step1Body.take(800)}")
             if (!step1Resp.isSuccessful) {
                 return@withContext LoginResult(false, error = "Step 1 failed: ${step1Resp.code}")
             }
-            val data = JSONObject(step1Resp.body!!.string())
+            val data = JSONObject(step1Body)
 
             // Extract PoW params from TextOutputCallback
             var powMessage = ""
             val callbacks = data.getJSONArray("callbacks")
+            Log.d(TAG, "Step1: ${callbacks.length()} Callbacks erhalten")
             for (i in 0 until callbacks.length()) {
                 val cb = callbacks.getJSONObject(i)
+                Log.d(TAG, "Step1: Callback[$i] type=${cb.getString("type")}")
                 if (cb.getString("type") == "TextOutputCallback") {
                     val outputs = cb.getJSONArray("output")
                     for (j in 0 until outputs.length()) {
@@ -90,6 +94,7 @@ class AuthService {
                     }
                 }
             }
+            Log.d(TAG, "Step1: powMessage-Laenge=${powMessage.length}, Inhalt=${powMessage.take(300)}")
             val workMatch = Regex("""var work = "([^"]+)""""").find(powMessage)
             val diffMatch = Regex("""var difficulty = (\d+)""").find(powMessage)
             if (workMatch == null || diffMatch == null) {
