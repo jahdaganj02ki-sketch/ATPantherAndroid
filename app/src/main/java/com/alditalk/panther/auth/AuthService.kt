@@ -182,9 +182,13 @@ class AuthService {
             Log.d(TAG, "OAuth2 → ${location.take(80)}...")
 
             // ── Step 4: Follow redirect chain manually (up to 8 hops) ──
-            var currentUrl = location
-            for (hop in 0 until 8) {
-                val resolved = resolveUrl(currentUrl, authUrl.toString())
+            // Use a nullable var guarded by the while-condition so Kotlin smart
+            // casts `nextUrl` to non-null inside the body (a plain `var currentUrl
+            // = location` would infer String? even though we null-checked above).
+            var nextUrl: String? = location
+            var hop = 0
+            while (nextUrl != null && hop < 8) {
+                val resolved = resolveUrl(nextUrl, authUrl.toString())
                 val hopReq = Request.Builder()
                     .url(resolved)
                     .header("User-Agent", AuthConfig.UA)
@@ -194,14 +198,17 @@ class AuthService {
                 Log.d(TAG, "Hop $hop → ${hopResp.code} ${resolved.take(60)}")
 
                 if (hopResp.code in 301..308) {
-                    currentUrl = hopResp.headers["Location"]
-                        ?: return@withContext LoginResult(false, error = "Hop $hop: kein Location")
+                    nextUrl = hopResp.headers["Location"]
                     hopResp.close()
+                    if (nextUrl == null) {
+                        return@withContext LoginResult(false, error = "Hop $hop: kein Location")
+                    }
                 } else {
                     hopResp.close()
                     Log.d(TAG, "Redirect-Kette abgeschlossen nach $hop Hops")
                     break
                 }
+                hop++
             }
 
             // New client that follows redirects normally for API calls
