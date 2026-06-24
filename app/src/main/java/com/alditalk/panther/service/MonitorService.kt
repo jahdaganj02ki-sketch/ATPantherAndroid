@@ -139,6 +139,8 @@ class MonitorService : Service() {
                         logDao.insert(LogEntry(type = "CHECK", message = "Re-Login erfolgreich"))
                         updateNotification("Re-Login erfolgreich")
                         broadcastStatus("Re-Login erfolgreich", -1f)
+                        // Direkt weiter zum naechsten Abruf, nicht warten
+                        continue
                     } else {
                         consecutiveLoginFailures++
                         if (consecutiveLoginFailures >= MAX_CONSECUTIVE_LOGIN_FAILURES) {
@@ -155,10 +157,9 @@ class MonitorService : Service() {
                         logDao.insert(LogEntry(type = "CHECK", message = failMsg))
                         updateNotification(failMsg)
                         broadcastStatus(failMsg, -1f)
+                        delay(intervalSec * 1000L)
+                        continue
                     }
-
-                    delay(intervalSec * 1000L)
-                    continue
                 }
 
                 // Erfolgreicher Abruf -> Session lebt, Counter reset
