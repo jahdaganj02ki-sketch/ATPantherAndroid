@@ -22,6 +22,7 @@ class MonitorService : Service() {
         private const val TAG = "MonitorService"
         private const val CHANNEL_ID = "at_panther_monitor"
         private const val NOTIFICATION_ID = 1
+        private const val MAX_CONSECUTIVE_LOGIN_FAILURES = 5
 
         const val EXTRA_PHONE = "phone"
         const val EXTRA_PASSWORD = "password"
@@ -91,14 +92,13 @@ class MonitorService : Service() {
     ) {
         val logDao = AppDatabase.getDatabase(this).logDao()
 
-        // Login once
+        // Initialer Login
         updateNotification("Anmelde...")
         broadcastStatus("Anmelden...", -1f)
 
-        val authService = AuthService()
-        val loginResult = authService.login(phone, password)
-        if (!loginResult.success || loginResult.client == null) {
-            val msg = "Login fehlgeschlagen: ${loginResult.error}"
+        var session = performLogin(phone, password)
+        if (session == null) {
+            val msg = "Login fehlgeschlagen (siehe Log)"
             Log.e(TAG, msg)
             logDao.insert(LogEntry(type = "CHECK", message = msg))
             updateNotification(msg)
@@ -107,21 +107,12 @@ class MonitorService : Service() {
             return
         }
 
+        var api = session.first
+        var contractId = session.second
         logDao.insert(LogEntry(type = "CHECK", message = "Login erfolgreich"))
-        val api = AldiTalkApi(loginResult.client)
-
-        // contractId automatisch ermitteln (keine Eingabe noetig)
-        val contractId = api.resolveContractId(phone)
-        if (contractId.isNullOrEmpty()) {
-            val msg = "Vertrags-ID konnte nicht ermittelt werden"
-            Log.e(TAG, msg)
-            logDao.insert(LogEntry(type = "CHECK", message = msg))
-            updateNotification(msg)
-            broadcastStatus(msg, -1f)
-            stopSelf()
-            return
-        }
         logDao.insert(LogEntry(type = "CHECK", message = "Vertrags-ID erkannt: $contractId"))
+
+        var consecutiveLoginFailures = 0
 
         while (isRunning && serviceJob?.isActive == true) {
             try {
@@ -132,14 +123,46 @@ class MonitorService : Service() {
                 // Fetch data status
                 val status = api.getRemainingData(contractId)
                 if (status == null) {
-                    val msg = "Datenvolumen konnte nicht abgefragt werden"
+                    // Session wahrscheinlich abgelaufen -> re-login versuchen
+                    val msg = "Datenvolumen konnte nicht abgefragt werden — re-login..."
                     Log.w(TAG, msg)
                     logDao.insert(LogEntry(type = "CHECK", remainingMb = -1f, message = msg))
                     updateNotification(msg)
                     broadcastStatus(msg, -1f)
+
+                    session = performLogin(phone, password)
+                    if (session != null) {
+                        consecutiveLoginFailures = 0
+                        api = session.first
+                        contractId = session.second
+                        Log.i(TAG, "Re-Login erfolgreich")
+                        logDao.insert(LogEntry(type = "CHECK", message = "Re-Login erfolgreich"))
+                        updateNotification("Re-Login erfolgreich")
+                        broadcastStatus("Re-Login erfolgreich", -1f)
+                    } else {
+                        consecutiveLoginFailures++
+                        if (consecutiveLoginFailures >= MAX_CONSECUTIVE_LOGIN_FAILURES) {
+                            val stopMsg = "Re-Login 5x fehlgeschlagen, Monitor gestoppt"
+                            Log.e(TAG, stopMsg)
+                            logDao.insert(LogEntry(type = "CHECK", message = stopMsg))
+                            updateNotification(stopMsg)
+                            broadcastStatus(stopMsg, -1f)
+                            stopSelf()
+                            return
+                        }
+                        val failMsg = "Re-Login fehlgeschlagen (Versuch $consecutiveLoginFailures/$MAX_CONSECUTIVE_LOGIN_FAILURES)"
+                        Log.w(TAG, failMsg)
+                        logDao.insert(LogEntry(type = "CHECK", message = failMsg))
+                        updateNotification(failMsg)
+                        broadcastStatus(failMsg, -1f)
+                    }
+
                     delay(intervalSec * 1000L)
                     continue
                 }
+
+                // Erfolgreicher Abruf -> Session lebt, Counter reset
+                consecutiveLoginFailures = 0
 
                 val remainingStr = "%.1f".format(status.remainingMb)
                 val msg = "Verbleibend: $remainingStr MB"
@@ -177,6 +200,35 @@ class MonitorService : Service() {
             }
 
             delay(intervalSec * 1000L)
+        }
+    }
+
+    /**
+     * Fuehrt Login + Vertrags-ID-Ermittlung durch.
+     * Liefert (api, contractId) bei Erfolg, null bei Misserfolg.
+     * Wird sowohl fuer den initialen Login als auch fuer Re-Logins verwendet.
+     */
+    private suspend fun performLogin(
+        phone: String,
+        password: String,
+    ): Pair<AldiTalkApi, String>? {
+        return try {
+            val authService = AuthService()
+            val loginResult = authService.login(phone, password)
+            if (!loginResult.success || loginResult.client == null) {
+                Log.e(TAG, "Login fehlgeschlagen: ${loginResult.error}")
+                return null
+            }
+            val api = AldiTalkApi(loginResult.client)
+            val contractId = api.resolveContractId(phone)
+            if (contractId.isNullOrEmpty()) {
+                Log.e(TAG, "Vertrags-ID konnte nicht ermittelt werden")
+                return null
+            }
+            api to contractId
+        } catch (e: Exception) {
+            Log.e(TAG, "Fehler bei performLogin", e)
+            null
         }
     }
 
