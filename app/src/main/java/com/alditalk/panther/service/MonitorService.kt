@@ -113,7 +113,7 @@ class MonitorService : Service() {
         logDao.insert(LogEntry(type = "CHECK", message = "Login erfolgreich"))
         val api = AldiTalkApi(loginResult.client)
 
-        while (isRunning && coroutineContext.isActive) {
+        while (isRunning && serviceJob?.isActive == true) {
             try {
                 // Clean old entries (keep last 7 days)
                 val sevenDays = System.currentTimeMillis() - 7 * 24 * 3600_000L
