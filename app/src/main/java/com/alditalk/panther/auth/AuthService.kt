@@ -6,7 +6,6 @@ import com.alditalk.panther.util.generatePkce
 import com.alditalk.panther.util.sha1
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import okhttp3.FormBody
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -62,12 +61,14 @@ class AuthService {
 
         try {
             // ── Step 1: Get login callbacks ──
+            // WICHTIG: leerer Body mit Content-Type application/json (wie in der
+            // Python-Referenz data=''). Ein leerer FormBody wuerde application/
+            // x-www-form-urlencoded setzen und ForgeRock antwortet ohne PoW-Callback.
             val step1 = Request.Builder()
                 .url(AuthConfig.AUTH_EP)
                 .header("User-Agent", AuthConfig.UA)
                 .header("Accept", "application/json")
-                .header("Content-Type", "application/json")
-                .post(FormBody.Builder().build())
+                .post("{}".toRequestBody(AuthConfig.JSON_MEDIA))
                 .build()
 
             val step1Resp = client.newCall(step1).execute()
