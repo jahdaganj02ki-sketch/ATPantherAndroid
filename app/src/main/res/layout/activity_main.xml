@@ -113,13 +113,18 @@
                         android:layout_weight="1"
                         android:text="Schwelle (MB):" />
 
-                    <EditText
-                        android:id="@+id/etThreshold"
+                    <com.google.android.material.textfield.TextInputLayout
                         android:layout_width="100dp"
-                        android:layout_height="wrap_content"
-                        android:inputType="number"
-                        android:text="250"
-                        android:gravity="end" />
+                        android:layout_height="wrap_content">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/etThreshold"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:inputType="number"
+                            android:text="250"
+                            android:gravity="end" />
+                    </com.google.android.material.textfield.TextInputLayout>
                 </LinearLayout>
 
                 <LinearLayout
@@ -135,13 +140,18 @@
                         android:layout_weight="1"
                         android:text="Intervall (Sek.):" />
 
-                    <EditText
-                        android:id="@+id/etInterval"
+                    <com.google.android.material.textfield.TextInputLayout
                         android:layout_width="100dp"
-                        android:layout_height="wrap_content"
-                        android:inputType="number"
-                        android:text="60"
-                        android:gravity="end" />
+                        android:layout_height="wrap_content">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/etInterval"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:inputType="number"
+                            android:text="60"
+                            android:gravity="end" />
+                    </com.google.android.material.textfield.TextInputLayout>
                 </LinearLayout>
 
                 <LinearLayout
@@ -157,13 +167,18 @@
                         android:layout_weight="1"
                         android:text="Vertrags-ID:" />
 
-                    <EditText
-                        android:id="@+id/etContractId"
+                    <com.google.android.material.textfield.TextInputLayout
                         android:layout_width="100dp"
-                        android:layout_height="wrap_content"
-                        android:inputType="number"
-                        android:text="31376559"
-                        android:gravity="end" />
+                        android:layout_height="wrap_content">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/etContractId"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:inputType="number"
+                            android:text="31376559"
+                            android:gravity="end" />
+                    </com.google.android.material.textfield.TextInputLayout>
                 </LinearLayout>
 
             </LinearLayout>
