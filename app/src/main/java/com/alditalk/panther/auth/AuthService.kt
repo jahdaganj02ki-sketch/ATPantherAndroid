@@ -97,10 +97,20 @@ class AuthService {
                 }
             }
             Log.e(TAG, "Step1: powMessage-Laenge=${powMessage.length}")
-            Log.e(TAG, "Step1: powMessage-ENDE(300)=...${powMessage.takeLast(300)}")
-            // Debug: Zeige Hex-Darstellung der letzten 60 Bytes um Quote-Escapes zu sehen
-            val tailBytes = powMessage.takeLast(60).toByteArray(Charsets.UTF_8)
-            Log.e(TAG, "Step1: powMessage-ENDE-HEX=${tailBytes.joinToString("") { String.format("%02x", it) }}")
+            // Lokalisiere 'var difficulty' (matched) und 'var work' (matcht nicht)
+            val diffIdx = powMessage.indexOf("var difficulty")
+            val workIdx = powMessage.indexOf("var work")
+            Log.e(TAG, "Step1: idx(var difficulty)=$diffIdx, idx(var work)=$workIdx")
+            // Zeige Bereich zwischen 'var difficulty' und nach 'var work' als Codepoints
+            if (diffIdx >= 0) {
+                val regionStart = diffIdx
+                val regionEnd = if (workIdx >= 0) (workIdx + 40) else (diffIdx + 80)
+                val region = powMessage.substring(regionStart, regionEnd.coerceAtMost(powMessage.length))
+                val cps = region.codePoints().toArray()
+                val cpStr = cps.joinToString(" ") { String.format("U+%04X", it) }
+                Log.e(TAG, "Step1: REGION[$regionStart..$regionEnd] CODEPOINTS: $cpStr")
+                Log.e(TAG, "Step1: REGION-TEXT='$region'")
+            }
             val workMatch = Regex("""var work = "([^"]+)""""").find(powMessage)
             val diffMatch = Regex("""var difficulty = (\d+)""").find(powMessage)
             Log.e(TAG, "Step1: workMatch=${if (workMatch != null) "OK:" + workMatch.groupValues[1] else "NULL"}, diffMatch=${if (diffMatch != null) "OK:" + diffMatch.groupValues[1] else "NULL"}")
