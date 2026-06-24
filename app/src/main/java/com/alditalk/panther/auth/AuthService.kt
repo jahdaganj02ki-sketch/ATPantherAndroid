@@ -96,9 +96,14 @@ class AuthService {
                     }
                 }
             }
-            Log.e(TAG, "Step1: powMessage-Laenge=${powMessage.length}, VOLLSTAENDIG=$powMessage")
+            Log.e(TAG, "Step1: powMessage-Laenge=${powMessage.length}")
+            Log.e(TAG, "Step1: powMessage-ENDE(300)=...${powMessage.takeLast(300)}")
+            // Debug: Zeige Hex-Darstellung der letzten 60 Bytes um Quote-Escapes zu sehen
+            val tailBytes = powMessage.takeLast(60).toByteArray(Charsets.UTF_8)
+            Log.e(TAG, "Step1: powMessage-ENDE-HEX=${tailBytes.joinToString("") { String.format("%02x", it) }}")
             val workMatch = Regex("""var work = "([^"]+)""""").find(powMessage)
             val diffMatch = Regex("""var difficulty = (\d+)""").find(powMessage)
+            Log.e(TAG, "Step1: workMatch=${if (workMatch != null) "OK:" + workMatch.groupValues[1] else "NULL"}, diffMatch=${if (diffMatch != null) "OK:" + diffMatch.groupValues[1] else "NULL"}")
             if (workMatch == null || diffMatch == null) {
                 return@withContext LoginResult(false, error = "PoW-Parameter nicht gefunden")
             }
