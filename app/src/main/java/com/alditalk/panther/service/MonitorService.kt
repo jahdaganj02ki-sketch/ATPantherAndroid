@@ -1,10 +1,14 @@
 package com.alditalk.panther.service
 
 import android.app.*
+import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import android.util.Log
+import androidx.core.app.NotificationCompat
+import com.alditalk.panther.MainActivity
 import com.alditalk.panther.R
 import com.alditalk.panther.api.AldiTalkApi
 import com.alditalk.panther.auth.AuthService
@@ -15,6 +19,13 @@ import kotlinx.coroutines.*
 /**
  * Foreground service that monitors ALDI Talk data volume and auto-books 1 GB
  * when remaining data drops below the threshold.
+ *
+ * Anforderung 5 – Optimierung für Huawei AGS2-L09 (Android 8.0 / EMUI):
+ *  - Läuft als Foreground Service mit permanenter sichtbarer Notification.
+ *  - Hält zusätzlich einen PARTIAL_WAKE_LOCK waehrend des Monitor-Loops,
+ *    damit EMUI's aggressives Stromspar-Management die CPU nicht abhaengt.
+ *  - Registriert einen AlarmManager-Fallback, der den Service nach Kill
+ *    (z.B. durchs System) erneut startet.
  */
 class MonitorService : Service() {
 
@@ -23,6 +34,11 @@ class MonitorService : Service() {
         private const val CHANNEL_ID = "at_panther_monitor"
         private const val NOTIFICATION_ID = 1
         private const val MAX_CONSECUTIVE_LOGIN_FAILURES = 5
+        private const val WAKELOCK_TAG = "ATPanther:MonitorWake"
+
+        // Default-Schwelle (Anforderung 2) – 850 MB
+        private const val DEFAULT_THRESHOLD_MB = 850f
+        private const val DEFAULT_INTERVAL_SEC = 60
 
         const val EXTRA_PHONE = "phone"
         const val EXTRA_PASSWORD = "password"
@@ -38,6 +54,13 @@ class MonitorService : Service() {
 
     private var serviceJob: Job? = null
     private var isRunning = false
+    private var wakeLock: PowerManager.WakeLock? = null
+
+    /** Aktueller Parameter-Satz, damit ein AlarmManager-Restart möglich ist. */
+    private var lastPhone: String = ""
+    private var lastPassword: String = ""
+    private var lastThresholdMb: Float = DEFAULT_THRESHOLD_MB
+    private var lastIntervalSec: Int = DEFAULT_INTERVAL_SEC
 
     override fun onCreate() {
         super.onCreate()
@@ -46,43 +69,142 @@ class MonitorService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
+            cancelFallbackAlarm()
+            stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
             return START_NOT_STICKY
         }
 
-        val phone = intent?.getStringExtra(EXTRA_PHONE) ?: ""
-        val password = intent?.getStringExtra(EXTRA_PASSWORD) ?: ""
-        val thresholdMb = intent?.getFloatExtra(EXTRA_THRESHOLD_MB, 250f) ?: 250f
-        val intervalSec = intent?.getIntExtra(EXTRA_INTERVAL_SEC, 60) ?: 60
+        // Parameter aktualisieren, falls ein echter Start-Intent vorliegt
+        if (intent != null && intent.action != ACTION_STOP) {
+            lastPhone = intent.getStringExtra(EXTRA_PHONE) ?: lastPhone
+            lastPassword = intent.getStringExtra(EXTRA_PASSWORD) ?: lastPassword
+            lastThresholdMb = intent.getFloatExtra(EXTRA_THRESHOLD_MB, DEFAULT_THRESHOLD_MB)
+            lastIntervalSec = intent.getIntExtra(EXTRA_INTERVAL_SEC, DEFAULT_INTERVAL_SEC)
+        }
 
-        if (phone.isEmpty() || password.isEmpty()) {
+        if (lastPhone.isEmpty() || lastPassword.isEmpty()) {
             stopSelf()
             return START_NOT_STICKY
         }
 
+        // Foreground-Status direkt sichern – sonst crasht startForegroundService
         startForeground(NOTIFICATION_ID, buildNotification("Starte Monitor..."))
+
+        // Service-Laufparameter für AlarmManager-Restart merken
+        scheduleFallbackAlarm(lastIntervalSec)
 
         if (serviceJob?.isActive == true) {
             return START_STICKY
         }
 
         isRunning = true
+        acquireWakeLock()
         val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
         serviceJob = scope.launch {
-            monitorLoop(phone, password, thresholdMb, intervalSec)
+            monitorLoop(lastPhone, lastPassword, lastThresholdMb, lastIntervalSec)
         }
 
+        // EMUI killt den Prozess bei niedrigem Memory gelegentlich –
+        // START_STICKY bittet das System um Neustart.
         return START_STICKY
+    }
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        // Nutzer hat die App aus dem Recents-Stack gewischt – Service
+        // ueber AlarmManager wieder einplanen, damit EMUI sie nicht beendet.
+        scheduleFallbackAlarm(lastIntervalSec)
+        super.onTaskRemoved(rootIntent)
     }
 
     override fun onDestroy() {
         isRunning = false
         serviceJob?.cancel()
+        releaseWakeLock()
         Log.d(TAG, "MonitorService gestoppt")
         super.onDestroy()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    // ── WakeLock-Fallback ──
+
+    /**
+     * Partielles WakeLock halten, solange der Monitor aktiv ist.
+     * Setzt voraus: android.permission.WAKE_LOCK (siehe Manifest).
+     */
+    private fun acquireWakeLock() {
+        if (wakeLock?.isHeld == true) return
+        try {
+            val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, WAKELOCK_TAG).apply {
+                setReferenceCounted(false)
+                // Lang aber nicht ewig – Timeout als Sicherheitsnetz.
+                acquire(10 * 60 * 1000L) // 10 Minuten
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "WakeLock konnte nicht gehalten werden", e)
+        }
+    }
+
+    private fun releaseWakeLock() {
+        try {
+            if (wakeLock?.isHeld == true) wakeLock?.release()
+        } catch (_: Exception) {
+            // ignore
+        }
+        wakeLock = null
+    }
+
+    // ── AlarmManager-Fallback ──
+
+    /**
+     * Plant einen AlarmManager-Ping, der den Service nach Ablauf des Intervalls
+     * erneut startet – selbst wenn EMUI den Job vorher beendet hat.
+     *
+     * Wir richten den PendingIntent gegen [MonitorWakeReceiver] (Broadcast),
+     * da Hintergrund-Service-Starts unter Android 8+ (Doze/Standby) Restriktionen
+     * unterliegen, ein dynamischer Broadcast-Receiver jedoch weiterhin aufwachen darf.
+     */
+    private fun scheduleFallbackAlarm(intervalSec: Int) {
+        try {
+            val alarmMgr = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+            val intent = Intent(this, MonitorWakeReceiver::class.java).apply {
+                action = MonitorWakeReceiver.ACTION_RESTART_MONITOR
+                putExtra(EXTRA_PHONE, lastPhone)
+                putExtra(EXTRA_PASSWORD, lastPassword)
+                putExtra(EXTRA_THRESHOLD_MB, lastThresholdMb)
+                putExtra(EXTRA_INTERVAL_SEC, intervalSec)
+            }
+            val triggerAt = System.currentTimeMillis() + intervalSec * 1000L
+            val pi = PendingIntent.getBroadcast(
+                this, 0, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            // setAndAllowWhileIdle funktioniert auch im Doze-Modus – ideal als Fallback.
+            alarmMgr.setAndAllowWhileIdle(
+                AlarmManager.RTC_WAKEUP, triggerAt, pi
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "AlarmManager-Fallback konnte nicht geplant werden", e)
+        }
+    }
+
+    private fun cancelFallbackAlarm() {
+        try {
+            val alarmMgr = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+            val intent = Intent(this, MonitorWakeReceiver::class.java).apply {
+                action = MonitorWakeReceiver.ACTION_RESTART_MONITOR
+            }
+            val pi = PendingIntent.getBroadcast(
+                this, 0, intent,
+                PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
+            )
+            if (pi != null) alarmMgr.cancel(pi)
+        } catch (_: Exception) {
+            // ignore
+        }
+    }
 
     private suspend fun monitorLoop(
         phone: String,
@@ -246,12 +368,25 @@ class MonitorService : Service() {
         }
     }
 
+    /**
+     * Foreground-Notification – permanent, sichtbar, mit Tap-Target MainActivity.
+     * Violett-Akzent-Farbe im Black Theme (colorPrimary) fuer konsistentes Look&Feel.
+     */
     private fun buildNotification(text: String): Notification {
-        return Notification.Builder(this, CHANNEL_ID)
+        val contentIntent = Intent(this, MainActivity::class.java)
+        val pendingIntent = PendingIntent.getActivity(
+            this, 0, contentIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("AT Panther")
             .setContentText(text)
             .setSmallIcon(android.R.drawable.ic_menu_compass)
+            .setColor(getColor(R.color.primary))
             .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setContentIntent(pendingIntent)
             .build()
     }
 
