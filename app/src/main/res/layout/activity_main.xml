@@ -217,7 +217,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"
-                    android:text="MIUI-Autostart erlauben" />
+                    android:text="Hintergrundbetrieb erlauben" />
 
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
@@ -290,8 +290,7 @@
                 <androidx.recyclerview.widget.RecyclerView
                     android:id="@+id/rvLog"
                     android:layout_width="match_parent"
-                    android:layout_height="0dp"
-                    android:layout_weight="1"
+                    android:layout_height="240dp"
                     android:minHeight="200dp"
                     android:nestedScrollingEnabled="false" />
 

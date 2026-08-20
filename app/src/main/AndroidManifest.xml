@@ -6,8 +6,6 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
-    <!-- Hintergrundprozess fuer EMUI (Huawei AGS2-L09 / Android 8): Wakelock als Fallback -->
-    <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- Bypass fuer aggressives Batterie-Management – oeffnet Whitelist-Dialog -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <!-- AlarmManager-Fallback fuer Intervall-Polling trotz Doze/Standby -->
@@ -38,7 +36,7 @@
             android:foregroundServiceType="dataSync" />
 
         <!--
-          WakeLock-Fallback-Empfaenger: AlarmManager kann via getBroadcast() den
+          Fallback-Empfaenger: AlarmManager kann via getBroadcast() den
           Receiver ansprechen – dieser startet den [MonitorService] neu,
           damit EMUI den Monitor nicht beendet.
         -->

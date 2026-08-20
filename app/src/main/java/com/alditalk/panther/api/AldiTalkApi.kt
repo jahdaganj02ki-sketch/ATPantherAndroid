@@ -59,32 +59,34 @@ class AldiTalkApi(private val client: OkHttpClient) {
                 .get()
                 .build()
 
-            val response = client.newCall(request).execute()
-            if (!response.isSuccessful) {
-                Log.e(TAG, "resolveContractId failed: ${response.code}")
-                return@withContext null
-            }
-
-            val json = JSONObject(response.body!!.string())
-            val subs = json.optJSONObject("userDetails")?.optJSONArray("subscriptions")
-            if (subs == null || subs.length() == 0) {
-                Log.e(TAG, "navigation-list: keine subscriptions")
-                return@withContext null
-            }
-
-            // 1) bevorzugt: Eintrag, dessen msisdn zur Rufnummer passt
-            for (i in 0 until subs.length()) {
-                val s = subs.getJSONObject(i)
-                if (s.optString("msisdn") == msisdn) {
-                    val cid = s.optString("contractId")
-                    Log.d(TAG, "contractId fuer $msisdn: $cid")
-                    return@withContext cid
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    Log.e(TAG, "resolveContractId failed: ${response.code}")
+                    return@withContext null
                 }
+
+                val body = response.body?.string() ?: return@withContext null
+                val json = JSONObject(body)
+                val subs = json.optJSONObject("userDetails")?.optJSONArray("subscriptions")
+                if (subs == null || subs.length() == 0) {
+                    Log.e(TAG, "navigation-list: keine subscriptions")
+                    return@withContext null
+                }
+
+                // 1) bevorzugt: Eintrag, dessen msisdn zur Rufnummer passt
+                for (i in 0 until subs.length()) {
+                    val s = subs.getJSONObject(i)
+                    if (s.optString("msisdn") == msisdn) {
+                        val cid = s.optString("contractId")
+                        Log.d(TAG, "contractId fuer $msisdn: $cid")
+                        return@withContext cid
+                    }
+                }
+                // 2) Fallback: erster Eintrag
+                val cid = subs.getJSONObject(0).optString("contractId")
+                Log.d(TAG, "contractId (fallback): $cid")
+                cid
             }
-            // 2) Fallback: erster Eintrag
-            val cid = subs.getJSONObject(0).optString("contractId")
-            Log.d(TAG, "contractId (fallback): $cid")
-            cid
         } catch (e: Exception) {
             Log.e(TAG, "Fehler bei resolveContractId", e)
             null
@@ -104,41 +106,43 @@ class AldiTalkApi(private val client: OkHttpClient) {
                 .get()
                 .build()
 
-            val response = client.newCall(request).execute()
-            if (!response.isSuccessful) {
-                Log.e(TAG, "getOffers failed: ${response.code}")
-                return@withContext null
-            }
-
-            val json = JSONObject(response.body!!.string())
-            val subscribedOffers = json.getJSONArray("subscribedOffers")
-            if (subscribedOffers.length() == 0) {
-                Log.e(TAG, "Keine subscribedOffers")
-                return@withContext null
-            }
-
-            val offer = subscribedOffers.getJSONObject(0)
-            val pack = offer.getJSONArray("pack")
-            var remainingKb = 0L
-
-            for (i in 0 until pack.length()) {
-                val p = pack.getJSONObject(i)
-                if (p.optString("balanceAttributeReference") == "dataGrantAmount") {
-                    remainingKb = p.optLong("allocated", 0) - p.optLong("used", 0)
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    Log.e(TAG, "getOffers failed: ${response.code}")
+                    return@withContext null
                 }
+
+                val body = response.body?.string() ?: return@withContext null
+                val json = JSONObject(body)
+                val subscribedOffers = json.getJSONArray("subscribedOffers")
+                if (subscribedOffers.length() == 0) {
+                    Log.e(TAG, "Keine subscribedOffers")
+                    return@withContext null
+                }
+
+                val offer = subscribedOffers.getJSONObject(0)
+                val pack = offer.getJSONArray("pack")
+                var remainingKb = 0L
+
+                for (i in 0 until pack.length()) {
+                    val p = pack.getJSONObject(i)
+                    if (p.optString("balanceAttributeReference") == "dataGrantAmount") {
+                        remainingKb = p.optLong("allocated", 0) - p.optLong("used", 0)
+                    }
+                }
+
+                val remainingMb = remainingKb / 1024.0
+                Log.d(TAG, "Verbleibend: ${"%.1f".format(remainingMb)} MB")
+
+                DataStatus(
+                    remainingMb = remainingMb,
+                    offerId = offer.getString("offerId"),
+                    subscriptionId = offer.getString("subscriptionId"),
+                    resourceId = offer.getString("resourceId"),
+                    onDemandAmount = offer.getString("onDemandAmountValueUid"),
+                    refillThreshold = offer.getString("refillThresholdValueUid"),
+                )
             }
-
-            val remainingMb = remainingKb / 1024.0
-            Log.d(TAG, "Verbleibend: ${"%.1f".format(remainingMb)} MB")
-
-            DataStatus(
-                remainingMb = remainingMb,
-                offerId = offer.getString("offerId"),
-                subscriptionId = offer.getString("subscriptionId"),
-                resourceId = offer.getString("resourceId"),
-                onDemandAmount = offer.getString("onDemandAmountValueUid"),
-                refillThreshold = offer.getString("refillThresholdValueUid"),
-            )
         } catch (e: Exception) {
             Log.e(TAG, "Fehler bei getRemainingData", e)
             null
@@ -167,18 +171,19 @@ class AldiTalkApi(private val client: OkHttpClient) {
                 .post(bodyJson.toString().toRequestBody("application/json".toMediaType()))
                 .build()
 
-            val response = client.newCall(request).execute()
-            val respBody = response.body?.string() ?: "{}"
-            val respJson = JSONObject(respBody)
-            val isUpdated = respJson.optBoolean("isUpdated", false)
+            client.newCall(request).execute().use { response ->
+                val respBody = response.body?.string() ?: "{}"
+                val respJson = JSONObject(respBody)
+                val isUpdated = respJson.optBoolean("isUpdated", false)
 
-            Log.d(TAG, "Booking: ${response.code}, isUpdated=$isUpdated")
-            BookingResult(
-                success = response.isSuccessful && isUpdated,
-                isUpdated = isUpdated,
-                statusCode = response.code,
-                message = respBody,
-            )
+                Log.d(TAG, "Booking: ${response.code}, isUpdated=$isUpdated")
+                BookingResult(
+                    success = response.isSuccessful && isUpdated,
+                    isUpdated = isUpdated,
+                    statusCode = response.code,
+                    message = respBody,
+                )
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Fehler bei book1Gb", e)
             BookingResult(false, false, -1, e.message ?: "Unbekannter Fehler")

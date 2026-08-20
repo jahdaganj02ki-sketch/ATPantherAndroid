@@ -1,6 +1,6 @@
 package com.alditalk.panther
 
-import android.app.Activity
+import android.Manifest
 import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
@@ -14,6 +14,8 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.recyclerview.widget.DiffUtil
+import androidx.recyclerview.widget.ListAdapter
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -31,11 +33,20 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+private val LOG_DIFF_CALLBACK = object : DiffUtil.ItemCallback<LogEntry>() {
+    override fun areItemsTheSame(oldItem: LogEntry, newItem: LogEntry): Boolean =
+        oldItem.id == newItem.id
+
+    override fun areContentsTheSame(oldItem: LogEntry, newItem: LogEntry): Boolean =
+        oldItem == newItem
+}
+
 class MainActivity : AppCompatActivity() {
 
     // Default-Werte
     private val defaultThresholdMb = 850f   // Anforderung 2: Standardwert 850 MB
     private val defaultIntervalSec = 60
+    private val minimumIntervalSec = 60
 
     private lateinit var etPhone: TextInputEditText
     private lateinit var etPassword: TextInputEditText
@@ -49,11 +60,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnBatteryOpt: MaterialButton
     private lateinit var btnAutoStart: MaterialButton
     private lateinit var rvLog: RecyclerView
+    private lateinit var logDao: LogDao
 
     private var isServiceRunning = false
-
-    /** Liste aller Log-Einträge (für den Log-Export gehalten). */
-    private var currentLogEntries: List<LogEntry> = emptyList()
 
     /**
      * SAF Launcher für ACTION_CREATE_DOCUMENT – oeffnet den System-Dateidialog,
@@ -66,6 +75,18 @@ class MainActivity : AppCompatActivity() {
             exportLogToUri(uri)
         } else {
             Toast.makeText(this, "Export abgebrochen", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private val notificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (!granted) {
+            Toast.makeText(
+                this,
+                "Benachrichtigungen sind deaktiviert; der Monitor läuft trotzdem weiter.",
+                Toast.LENGTH_LONG,
+            ).show()
         }
     }
 
@@ -96,6 +117,16 @@ class MainActivity : AppCompatActivity() {
         rvLog = findViewById(R.id.rvLog)
 
         rvLog.layoutManager = LinearLayoutManager(this)
+        rvLog.setHasFixedSize(true)
+
+        // Android 13+: Die Berechtigung ist für die sichtbare Monitor-Notification nötig.
+        // Auf Android 12 des Zielgeräts wird dieser Block übersprungen.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
 
         // Anforderung 1: Gespeicherte Login-Daten UND Einstellungen laden
         loadCredentials()
@@ -132,18 +163,17 @@ class MainActivity : AppCompatActivity() {
             requestIgnoreBatteryOptimizations()
         }
 
-        // Xiaomi/Redmi: MIUI-Autostart explizit freigeben
+        // Hersteller-spezifische Hintergrund-/Autostart-Einstellungen öffnen
         btnAutoStart.setOnClickListener {
             openAutoStartSettings()
         }
 
         // Observe log entries
-        val logDao = (application as PantherApp).database.logDao()
+        logDao = (application as PantherApp).database.logDao()
         val adapter = LogAdapter()
         rvLog.adapter = adapter
         lifecycleScope.launch {
-            logDao.getAll().collectLatest { entries ->
-                currentLogEntries = entries
+            logDao.getRecent().collectLatest { entries ->
                 adapter.submitList(entries)
             }
         }
@@ -166,7 +196,8 @@ class MainActivity : AppCompatActivity() {
 
     // ── SharedPreferences (Login-Daten + Einstellungen) ──
 
-    private fun getEncryptedPrefs() = getSharedPreferences("at_panther_secure", MODE_PRIVATE)
+    private fun getEncryptedPrefs() =
+        (application as PantherApp).securePreferences()
 
     /**
      * Anforderung 1: Login-Daten plus Einstellungen (Schwelle/Intervall) speichern.
@@ -199,7 +230,8 @@ class MainActivity : AppCompatActivity() {
         etThreshold.text.toString().trim().toFloatOrNull() ?: defaultThresholdMb
 
     private fun parseInterval(): Int =
-        etInterval.text.toString().trim().toIntOrNull() ?: defaultIntervalSec
+        (etInterval.text.toString().trim().toIntOrNull() ?: defaultIntervalSec)
+            .coerceAtLeast(minimumIntervalSec)
 
     // ── Cache leeren ──
 
@@ -233,40 +265,39 @@ class MainActivity : AppCompatActivity() {
      * Log-Einträge chronologisch (aehlteste zuerst).
      */
     private fun exportLogToUri(uri: Uri) {
-        val entries = currentLogEntries
-        if (entries.isEmpty()) {
-            Toast.makeText(this, "Kein Log-Verlauf vorhanden", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        val sdf = SimpleDateFormat("dd.MM.yyyy HH:mm:ss", Locale.GERMAN)
-        val sb = StringBuilder()
-        sb.appendLine("AT Panther – Log-Export")
-        sb.appendLine("Erstellt am: ${sdf.format(Date())}")
-        sb.appendLine("Anzahl Einträge: ${entries.size}")
-        sb.appendLine("────────────────────────────────────────")
-        // In der DB (getAll) ist neueste zuerst – im Export aelteste zuerst ausgeben:
-        entries.sortedBy { it.timestamp }.forEach { e ->
-            val time = sdf.format(Date(e.timestamp))
-            val typeIcon = if (e.type == "BOOKING") "📦" else "📡"
-            val remaining = if (e.remainingMb >= 0) "  [${"%.1f".format(e.remainingMb)} MB]" else ""
-            sb.appendLine("$time  $typeIcon  ${e.message}$remaining")
-        }
-
         lifecycleScope.launch {
+            // Die Anzeige ist auf die letzten 300 Einträge begrenzt; der Export
+            // liest weiterhin den vollständigen Verlauf direkt aus Room.
+            val entries = withContext(Dispatchers.IO) { logDao.getAllForExport() }
+            if (entries.isEmpty()) {
+                Toast.makeText(this@MainActivity, "Kein Log-Verlauf vorhanden", Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+
+            val sdf = SimpleDateFormat("dd.MM.yyyy HH:mm:ss", Locale.GERMAN)
+            val sb = StringBuilder()
+            sb.appendLine("AT Panther – Log-Export")
+            sb.appendLine("Erstellt am: ${sdf.format(Date())}")
+            sb.appendLine("Anzahl Einträge: ${entries.size}")
+            sb.appendLine("────────────────────────────────────────")
+            entries.forEach { e ->
+                val time = sdf.format(Date(e.timestamp))
+                val typeIcon = if (e.type == "BOOKING") "📦" else "📡"
+                val remaining = if (e.remainingMb >= 0) "  [${"%.1f".format(e.remainingMb)} MB]" else ""
+                sb.appendLine("$time  $typeIcon  ${e.message}$remaining")
+            }
+
             val ok = withContext(Dispatchers.IO) {
                 writeTextToUri(uri, sb.toString())
             }
-            runOnUiThread {
-                if (ok) {
-                    Toast.makeText(
-                        this@MainActivity,
-                        "Log exportiert (${entries.size} Einträge)",
-                        Toast.LENGTH_LONG
-                    ).show()
-                } else {
-                    Toast.makeText(this@MainActivity, "Export fehlgeschlagen", Toast.LENGTH_LONG).show()
-                }
+            if (ok) {
+                Toast.makeText(
+                    this@MainActivity,
+                    "Log exportiert (${entries.size} Einträge)",
+                    Toast.LENGTH_LONG
+                ).show()
+            } else {
+                Toast.makeText(this@MainActivity, "Export fehlgeschlagen", Toast.LENGTH_LONG).show()
             }
         }
     }
@@ -289,11 +320,12 @@ class MainActivity : AppCompatActivity() {
     /**
      * Anforderung 5: Oeffnet direkt den Systemdialog, um die App von der
      * Batterie-Optimierung auszunehmen (ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).
-     * Empfohlen fuer aggressive EMUI/Huawei-Geraete wie AGS2-L09 (Android 8.0).
+     * Auf dem Ulefone Power Armor X11 Pro ist dies die wichtigste Einstellung
+     * gegen herstellerspezifisches Beenden des Foreground-Service.
      */
     /**
-     * Öffnet auf Xiaomi/Redmi/POCO den MIUI-Autostart. Auf anderen Geräten
-     * wird stattdessen die App-Detailseite als sichere Fallback-Einstellung geöffnet.
+     * Öffnet Hersteller-Einstellungen, sofern bekannt, sonst die App-Detailseite.
+     * Auf dem Ulefone ist die App-Detailseite der sichere Android-12-Fallback.
      */
     private fun openAutoStartSettings() {
         val manufacturer = "${Build.MANUFACTURER} ${Build.BRAND}".lowercase(Locale.ROOT)
@@ -310,7 +342,7 @@ class MainActivity : AppCompatActivity() {
                 })
                 return
             } catch (e: Exception) {
-                android.util.Log.w("MainActivity", "MIUI-Autostart nicht verfügbar", e)
+                android.util.Log.w("MainActivity", "Hersteller-Autostart nicht verfügbar", e)
             }
         }
 
@@ -363,8 +395,11 @@ class MainActivity : AppCompatActivity() {
 
         val threshold = parseThreshold()
         val interval = parseInterval()
+        if (etInterval.text.toString().trim().toIntOrNull() != interval) {
+            etInterval.setText(interval.toString())
+        }
 
-        // Für einen MIUI/Boot-Neustart die zuletzt gestarteten Werte sichern.
+        // Für einen Boot-Neustart die zuletzt gestarteten Werte sichern.
         saveCredentials()
 
         val intent = Intent(this, MonitorService::class.java).apply {
@@ -402,15 +437,8 @@ class MainActivity : AppCompatActivity() {
 
     // ── Log RecyclerView Adapter ──
 
-    inner class LogAdapter : RecyclerView.Adapter<LogAdapter.ViewHolder>() {
-        private val entries = mutableListOf<LogEntry>()
+    inner class LogAdapter : ListAdapter<LogEntry, LogAdapter.ViewHolder>(LOG_DIFF_CALLBACK) {
         private val sdf = SimpleDateFormat("dd.MM HH:mm:ss", Locale.GERMAN)
-
-        fun submitList(list: List<LogEntry>) {
-            entries.clear()
-            entries.addAll(list)
-            notifyDataSetChanged()
-        }
 
         inner class ViewHolder(val view: android.widget.TextView) : RecyclerView.ViewHolder(view)
 
@@ -420,12 +448,11 @@ class MainActivity : AppCompatActivity() {
         }
 
         override fun onBindViewHolder(holder: ViewHolder, position: Int) {
-            val entry = entries[position]
+            val entry = getItem(position)
             val time = sdf.format(Date(entry.timestamp))
             val typeIcon = if (entry.type == "BOOKING") "📦" else "📡"
             holder.view.text = "$time  $typeIcon  ${entry.message}"
         }
 
-        override fun getItemCount(): Int = entries.size
     }
 }

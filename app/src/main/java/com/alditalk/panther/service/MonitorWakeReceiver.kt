@@ -3,7 +3,6 @@ package com.alditalk.panther.service
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.os.Build
 import android.util.Log
 import androidx.core.content.ContextCompat
 
@@ -35,7 +34,7 @@ class MonitorWakeReceiver : BroadcastReceiver() {
      *liest der Service beim naechsten Nutzer-Klick neu ein.
      */
     private fun restartMonitor(context: Context, source: Intent?) {
-        val prefs = context.getSharedPreferences("at_panther_secure", Context.MODE_PRIVATE)
+        val prefs = PantherApp.securePreferences(context)
         val isBoot = source?.action == Intent.ACTION_BOOT_COMPLETED ||
             source?.action == "android.intent.action.QUICKBOOT_POWERON"
 
@@ -65,7 +64,9 @@ class MonitorWakeReceiver : BroadcastReceiver() {
             putExtra(MonitorService.EXTRA_PHONE, phone)
             putExtra(MonitorService.EXTRA_PASSWORD, password)
             putExtra(MonitorService.EXTRA_THRESHOLD_MB, threshold)
-            putExtra(MonitorService.EXTRA_INTERVAL_SEC, interval.coerceAtLeast(15))
+            // Unter 60 Sekunden würden unnötig viele Mobilfunkanfragen und Wakeups
+            // entstehen; der Monitor verwendet denselben Mindestwert wie die Activity.
+            putExtra(MonitorService.EXTRA_INTERVAL_SEC, interval.coerceAtLeast(60))
         }
 
         try {

@@ -5,7 +5,6 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.IBinder
-import android.os.PowerManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.alditalk.panther.MainActivity
@@ -20,10 +19,10 @@ import kotlinx.coroutines.*
  * Foreground service that monitors ALDI Talk data volume and auto-books 1 GB
  * when remaining data drops below the threshold.
  *
- * Anforderung 5 – Optimierung für Huawei AGS2-L09 (Android 8.0 / EMUI):
+ * Optimiert für Android 12 und herstellerspezifische Akkuverwaltung:
  *  - Läuft als Foreground Service mit permanenter sichtbarer Notification.
- *  - Hält zusätzlich einen PARTIAL_WAKE_LOCK waehrend des Monitor-Loops,
- *    damit EMUI's aggressives Stromspar-Management die CPU nicht abhaengt.
+ *  - Verwendet keinen dauerhaften PARTIAL_WAKE_LOCK, damit der große Akku
+ *    des X11 Pro nicht unnötig durch permanente CPU-Wachphasen belastet wird.
  *  - Registriert einen AlarmManager-Fallback, der den Service nach Kill
  *    (z.B. durchs System) erneut startet.
  */
@@ -34,11 +33,10 @@ class MonitorService : Service() {
         private const val CHANNEL_ID = "at_panther_monitor"
         private const val NOTIFICATION_ID = 1
         private const val MAX_CONSECUTIVE_LOGIN_FAILURES = 5
-        private const val WAKELOCK_TAG = "ATPanther:MonitorWake"
-
         // Default-Schwelle (Anforderung 2) – 850 MB
         private const val DEFAULT_THRESHOLD_MB = 850f
         private const val DEFAULT_INTERVAL_SEC = 60
+        private const val MIN_INTERVAL_SEC = 60
 
         const val EXTRA_PHONE = "phone"
         const val EXTRA_PASSWORD = "password"
@@ -54,7 +52,6 @@ class MonitorService : Service() {
 
     private var serviceJob: Job? = null
     private var isRunning = false
-    private var wakeLock: PowerManager.WakeLock? = null
 
     /** Aktueller Parameter-Satz, damit ein AlarmManager-Restart möglich ist. */
     private var lastPhone: String = ""
@@ -80,7 +77,10 @@ class MonitorService : Service() {
             lastPhone = intent.getStringExtra(EXTRA_PHONE) ?: lastPhone
             lastPassword = intent.getStringExtra(EXTRA_PASSWORD) ?: lastPassword
             lastThresholdMb = intent.getFloatExtra(EXTRA_THRESHOLD_MB, DEFAULT_THRESHOLD_MB)
-            lastIntervalSec = intent.getIntExtra(EXTRA_INTERVAL_SEC, DEFAULT_INTERVAL_SEC)
+            lastIntervalSec = intent.getIntExtra(
+                EXTRA_INTERVAL_SEC,
+                DEFAULT_INTERVAL_SEC,
+            ).coerceAtLeast(MIN_INTERVAL_SEC)
         }
 
         if (lastPhone.isEmpty() || lastPassword.isEmpty()) {
@@ -99,14 +99,15 @@ class MonitorService : Service() {
         }
 
         isRunning = true
-        acquireWakeLock()
+        // Ein Foreground-Service besitzt bereits eine erhöhte Prozesspriorität.
+        // Ein dauerhafter PARTIAL_WAKE_LOCK würde auf dem X11 Pro nur Akku kosten.
         val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
         serviceJob = scope.launch {
             monitorLoop(lastPhone, lastPassword, lastThresholdMb, lastIntervalSec)
         }
 
-        // EMUI killt den Prozess bei niedrigem Memory gelegentlich –
-        // START_STICKY bittet das System um Neustart.
+        // START_STICKY bittet Android bzw. die Hersteller-ROM um Neustart,
+        // falls der Prozess unter Speicherdruck beendet wird.
         return START_STICKY
     }
 
@@ -120,41 +121,11 @@ class MonitorService : Service() {
     override fun onDestroy() {
         isRunning = false
         serviceJob?.cancel()
-        releaseWakeLock()
         Log.d(TAG, "MonitorService gestoppt")
         super.onDestroy()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
-
-    // ── WakeLock-Fallback ──
-
-    /**
-     * Partielles WakeLock halten, solange der Monitor aktiv ist.
-     * Setzt voraus: android.permission.WAKE_LOCK (siehe Manifest).
-     */
-    private fun acquireWakeLock() {
-        if (wakeLock?.isHeld == true) return
-        try {
-            val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
-            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, WAKELOCK_TAG).apply {
-                setReferenceCounted(false)
-                // Lang aber nicht ewig – Timeout als Sicherheitsnetz.
-                acquire(10 * 60 * 1000L) // 10 Minuten
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "WakeLock konnte nicht gehalten werden", e)
-        }
-    }
-
-    private fun releaseWakeLock() {
-        try {
-            if (wakeLock?.isHeld == true) wakeLock?.release()
-        } catch (_: Exception) {
-            // ignore
-        }
-        wakeLock = null
-    }
 
     // ── AlarmManager-Fallback ──
 
@@ -168,15 +139,16 @@ class MonitorService : Service() {
      */
     private fun scheduleFallbackAlarm(intervalSec: Int) {
         try {
+            val safeIntervalSec = intervalSec.coerceAtLeast(MIN_INTERVAL_SEC)
             val alarmMgr = getSystemService(Context.ALARM_SERVICE) as AlarmManager
             val intent = Intent(this, MonitorWakeReceiver::class.java).apply {
                 action = MonitorWakeReceiver.ACTION_RESTART_MONITOR
                 putExtra(EXTRA_PHONE, lastPhone)
                 putExtra(EXTRA_PASSWORD, lastPassword)
                 putExtra(EXTRA_THRESHOLD_MB, lastThresholdMb)
-                putExtra(EXTRA_INTERVAL_SEC, intervalSec)
+                putExtra(EXTRA_INTERVAL_SEC, safeIntervalSec)
             }
-            val triggerAt = System.currentTimeMillis() + intervalSec * 1000L
+            val triggerAt = System.currentTimeMillis() + safeIntervalSec * 1000L
             val pi = PendingIntent.getBroadcast(
                 this, 0, intent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
@@ -279,7 +251,7 @@ class MonitorService : Service() {
                         logDao.insert(LogEntry(type = "CHECK", message = failMsg))
                         updateNotification(failMsg)
                         broadcastStatus(failMsg, -1f)
-                        delay(intervalSec * 1000L)
+                        delay(intervalSec.coerceAtLeast(MIN_INTERVAL_SEC) * 1000L)
                         continue
                     }
                 }
@@ -322,7 +294,7 @@ class MonitorService : Service() {
                 broadcastStatus(errMsg, -1f)
             }
 
-            delay(intervalSec * 1000L)
+            delay(intervalSec.coerceAtLeast(MIN_INTERVAL_SEC) * 1000L)
         }
     }
 
