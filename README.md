@@ -12,3 +12,9 @@ Android Foreground-Service, der das ALDI Talk Datenvolumen überwacht und automa
 ## Build
 APK wird automatisch über GitHub Actions gebaut.
 Repo: `jahdaganj00ki-eng/ATPantherAndroid`
+
+## Gemeinsamer Monitor-Lock
+
+Android und Windows können optional über eine kostenlose Appwrite-Function eine gemeinsame Lease-Sperre verwenden. Dadurch darf pro Rufnummer nur ein Monitor aktiv sein. Die Sperre wird per Heartbeat erneuert und bei Verbindungs- oder Lock-Verlust sicher freigegeben bzw. gestoppt.
+
+Einrichtung: `ATPantherLockFunction/README.md` und `ATPantherWindows/LOCK-SETUP.md`.

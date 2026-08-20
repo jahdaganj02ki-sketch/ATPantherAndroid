@@ -93,16 +93,22 @@ internal sealed class SettingsStore
     {
         try
         {
-            if (!File.Exists(AppPaths.SettingsFile)) return new AppSettings();
+            if (!File.Exists(AppPaths.SettingsFile))
+                return new AppSettings { DeviceId = EnsureDeviceId(string.Empty) };
             var encrypted = File.ReadAllBytes(AppPaths.SettingsFile);
             var json = Encoding.UTF8.GetString(Dpapi.Unprotect(encrypted));
-            return JsonSerializer.Deserialize<AppSettings>(json) ?? new AppSettings();
+            var settings = JsonSerializer.Deserialize<AppSettings>(json) ?? new AppSettings();
+            settings.DeviceId = EnsureDeviceId(settings.DeviceId);
+            return settings;
         }
         catch
         {
-            return new AppSettings();
+            return new AppSettings { DeviceId = EnsureDeviceId(string.Empty) };
         }
     }
+
+    private static string EnsureDeviceId(string deviceId) =>
+        string.IsNullOrWhiteSpace(deviceId) ? Guid.NewGuid().ToString() : deviceId;
 
     public void Save(AppSettings settings)
     {

@@ -7,6 +7,8 @@ public sealed class AppSettings
     public float ThresholdMb { get; set; } = 850f;
     public int IntervalSec { get; set; } = 60;
     public bool MonitorEnabled { get; set; }
+    public bool SingleMonitorEnabled { get; set; } = true;
+    public string DeviceId { get; set; } = string.Empty;
     public bool StartWithWindows { get; set; }
 }
 

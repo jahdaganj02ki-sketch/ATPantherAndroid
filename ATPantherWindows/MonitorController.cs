@@ -51,6 +51,38 @@ internal sealed class MonitorController : IAsyncDisposable
 
     private async Task RunAsync(AppSettings settings, CancellationToken cancellationToken)
     {
+        MonitorLockClient? lockClient = null;
+        if (settings.SingleMonitorEnabled)
+        {
+            if (!MonitorLockConfig.IsConfigured)
+            {
+                Report("Gemeinsame Monitor-Sperre ist nicht eingerichtet", notify: true, isError: true);
+                return;
+            }
+            lockClient = new MonitorLockClient();
+            if (!await lockClient.AcquireAsync(settings.Phone, settings.DeviceId, cancellationToken))
+            {
+                Report("Monitor läuft bereits auf dem anderen Gerät", notify: true, isError: true);
+                return;
+            }
+        }
+
+        try
+        {
+            await RunUnlockedAsync(settings, cancellationToken, lockClient);
+        }
+        finally
+        {
+            if (lockClient is not null)
+                await lockClient.ReleaseAsync(settings.Phone, settings.DeviceId, CancellationToken.None);
+        }
+    }
+
+    private async Task RunUnlockedAsync(
+        AppSettings settings,
+        CancellationToken cancellationToken,
+        MonitorLockClient? lockClient)
+    {
         try
         {
             Report("Anmelden...", notify: true);
@@ -68,6 +100,13 @@ internal sealed class MonitorController : IAsyncDisposable
             var consecutiveLoginFailures = 0;
             while (!cancellationToken.IsCancellationRequested)
             {
+                if (lockClient is not null &&
+                    !await lockClient.HeartbeatAsync(settings.Phone, settings.DeviceId, cancellationToken))
+                {
+                    Report("Gemeinsame Monitor-Sperre verloren – Monitor gestoppt", notify: true, isError: true);
+                    return;
+                }
+
                 var status = await _client.GetRemainingDataAsync(contractId, cancellationToken);
                 if (status is null)
                 {

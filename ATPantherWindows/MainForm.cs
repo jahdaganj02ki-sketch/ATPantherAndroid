@@ -13,6 +13,7 @@ public sealed class MainForm : Form
     private readonly TextBox _passwordBox = new();
     private readonly NumericUpDown _thresholdBox = new();
     private readonly NumericUpDown _intervalBox = new();
+    private readonly CheckBox _singleMonitor = new();
     private readonly CheckBox _startWithWindows = new();
     private readonly Label _statusLabel = new();
     private readonly Button _startButton = new();
@@ -21,6 +22,7 @@ public sealed class MainForm : Form
     private readonly NotifyIcon _trayIcon = new();
     private readonly ContextMenuStrip _trayMenu = new();
     private bool _exitRequested;
+    private string _deviceId = string.Empty;
 
     public MainForm(bool startMinimized)
     {
@@ -104,14 +106,18 @@ public sealed class MainForm : Form
 
     private GroupBox CreateSettingsGroup()
     {
-        var group = CreateGroup("Einstellungen", 720, 150);
-        var table = CreateTable(3);
+        var group = CreateGroup("Einstellungen", 720, 188);
+        var table = CreateTable(4);
+        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
         table.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
         table.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
         table.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
 
         ConfigureNumeric(_thresholdBox, 0, 999999, 850, 0);
         ConfigureNumeric(_intervalBox, 60, 86400, 60, 0);
+        _singleMonitor.Text = "Nur einen Monitor gleichzeitig zulassen";
+        _singleMonitor.Checked = true;
+        _singleMonitor.AutoSize = true;
         _startWithWindows.Text = "Mit Windows starten und im Tray beginnen";
         _startWithWindows.AutoSize = true;
 
@@ -119,7 +125,8 @@ public sealed class MainForm : Form
         table.Controls.Add(_thresholdBox, 1, 0);
         table.Controls.Add(CreateLabel("Intervall (Sek.):"), 0, 1);
         table.Controls.Add(_intervalBox, 1, 1);
-        table.Controls.Add(_startWithWindows, 1, 2);
+        table.Controls.Add(_singleMonitor, 1, 2);
+        table.Controls.Add(_startWithWindows, 1, 3);
         group.Controls.Add(table);
         return group;
     }
@@ -223,7 +230,9 @@ public sealed class MainForm : Form
         _passwordBox.Text = settings.Password;
         _thresholdBox.Value = Clamp(settings.ThresholdMb, _thresholdBox.Minimum, _thresholdBox.Maximum);
         _intervalBox.Value = Clamp(settings.IntervalSec, _intervalBox.Minimum, _intervalBox.Maximum);
+        _singleMonitor.Checked = settings.SingleMonitorEnabled;
         _startWithWindows.Checked = settings.StartWithWindows;
+        _deviceId = settings.DeviceId;
     }
 
     private async void MainForm_Shown(object? sender, EventArgs e)
@@ -278,6 +287,8 @@ public sealed class MainForm : Form
             ThresholdMb = (float)_thresholdBox.Value,
             IntervalSec = (int)_intervalBox.Value,
             MonitorEnabled = _monitor.IsRunning,
+            SingleMonitorEnabled = _singleMonitor.Checked,
+            DeviceId = _deviceId,
             StartWithWindows = _startWithWindows.Checked
         };
     }

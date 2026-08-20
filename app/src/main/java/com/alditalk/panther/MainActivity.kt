@@ -22,6 +22,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.alditalk.panther.data.LogDao
 import com.alditalk.panther.data.LogEntry
 import com.alditalk.panther.service.MonitorService
+import com.google.android.material.switchmaterial.SwitchMaterial
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.textfield.TextInputEditText
 import kotlinx.coroutines.Dispatchers
@@ -52,6 +53,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var etPassword: TextInputEditText
     private lateinit var etThreshold: TextInputEditText
     private lateinit var etInterval: TextInputEditText
+    private lateinit var swSingleMonitor: SwitchMaterial
     private lateinit var tvStatus: android.widget.TextView
     private lateinit var btnToggle: MaterialButton
     private lateinit var btnSave: MaterialButton
@@ -107,6 +109,7 @@ class MainActivity : AppCompatActivity() {
         etPassword = findViewById(R.id.etPassword)
         etThreshold = findViewById(R.id.etThreshold)
         etInterval = findViewById(R.id.etInterval)
+        swSingleMonitor = findViewById(R.id.swSingleMonitor)
         tvStatus = findViewById(R.id.tvStatus)
         btnToggle = findViewById(R.id.btnToggleService)
         btnSave = findViewById(R.id.btnSaveCredentials)
@@ -211,6 +214,7 @@ class MainActivity : AppCompatActivity() {
             .putString("password", etPassword.text.toString().trim())
             .putString("threshold_mb", etThreshold.text.toString().trim())
             .putString("interval_sec", etInterval.text.toString().trim())
+            .putBoolean("single_monitor_enabled", swSingleMonitor.isChecked)
             .apply()
     }
 
@@ -224,6 +228,7 @@ class MainActivity : AppCompatActivity() {
         // Anforderung 2: Standardwert 850 MB beim ersten App-Start (vorher 250)
         etThreshold.setText(prefs.getString("threshold_mb", defaultThresholdMb.toInt().toString()))
         etInterval.setText(prefs.getString("interval_sec", defaultIntervalSec.toString()))
+        swSingleMonitor.isChecked = prefs.getBoolean("single_monitor_enabled", true)
     }
 
     private fun parseThreshold(): Float =
@@ -407,6 +412,7 @@ class MainActivity : AppCompatActivity() {
             putExtra(MonitorService.EXTRA_PASSWORD, password)
             putExtra(MonitorService.EXTRA_THRESHOLD_MB, threshold)
             putExtra(MonitorService.EXTRA_INTERVAL_SEC, interval)
+            putExtra(MonitorService.EXTRA_SINGLE_MONITOR, swSingleMonitor.isChecked)
         }
 
         // Kompatibel ab API 24; auf Android 11 wird der Foreground-Service
