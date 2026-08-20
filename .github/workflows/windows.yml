@@ -1,0 +1,44 @@
+name: Windows x64 Build
+
+on:
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'ATPantherWindows/**'
+      - '.github/workflows/windows.yml'
+  pull_request:
+    branches: [ main, master ]
+    paths:
+      - 'ATPantherWindows/**'
+      - '.github/workflows/windows.yml'
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Publish self-contained Windows x64 application
+        run: >-
+          dotnet publish ATPantherWindows/ATPantherWindows.csproj
+          --configuration Release
+          --runtime win-x64
+          --self-contained true
+          --property:PublishSingleFile=true
+          --property:IncludeNativeLibrariesForSelfExtract=true
+          --property:DebugType=None
+
+      - name: Upload Windows executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: AT-Panther-Windows-x64
+          path: ATPantherWindows/bin/Release/net8.0-windows10.0.17763.0/win-x64/publish/
+          retention-days: 14
