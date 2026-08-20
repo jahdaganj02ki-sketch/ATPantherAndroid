@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.util.Log
 import androidx.core.content.ContextCompat
+import com.alditalk.panther.PantherApp
 
 /**
  * Empfangs-Receiver für AlarmManager-Fallback und (optional) Boot-Completed.
