@@ -26,4 +26,4 @@ Einzutragen sind:
 
 Der Appwrite-API-Key gehört **nicht** in Android oder Windows, sondern ausschließlich in die Appwrite Function-Umgebungsvariablen.
 
-Der Schalter „Nur einen Monitor gleichzeitig zulassen“ ist standardmäßig aktiviert. Ist er aktiviert und die Lock-Konfiguration fehlt, startet der Monitor nicht. Ist er deaktiviert, arbeiten die Apps unabhängig voneinander.
+Die Auswahl „Monitor läuft auf: Android/Windows“ bestimmt die aktive Plattform. Ist Android ausgewählt, startet Windows nicht; ist Windows ausgewählt, startet Android nicht. Ein Wechsel der Auswahl beendet den bisher aktiven Monitor beim nächsten Heartbeat. Ohne konfigurierte Sperre startet der Monitor sicherheitshalber nicht.

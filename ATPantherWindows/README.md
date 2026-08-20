@@ -19,7 +19,7 @@ Native Windows-10-Version von AT Panther für den Toshiba Satellite C660.
 - Tray-Icon mit Starten, Stoppen, Anzeigen und Beenden
 - Windows-10-Ballonbenachrichtigungen bei wichtigen Ereignissen
 - Optionaler Start mit Windows
-- Optionaler gemeinsamer Monitor-Lock mit der Android-Version
+- Gemeinsame Plattform-Auswahl Android/Windows mit der Android-Version
 - Lokaler Verlauf, Bereinigung nach sieben Tagen und vollständiger TXT-Export
 - Automatischer Wiederanmeldeversuch nach Sitzungsablauf
 
@@ -40,7 +40,7 @@ bin\Release\net8.0-windows10.0.17763.0\win-x64\publish\ATPantherWindows.exe
 
 Die EXE benötigt keine separate .NET-Installation. Zugangsdaten werden pro Windows-Benutzer mit DPAPI verschlüsselt.
 
-Für die geräteübergreifende Sperre siehe `LOCK-SETUP.md` und `../ATPantherLockFunction/README.md`. Der Schalter ist standardmäßig aktiv; ohne konfigurierte Sperre startet der Monitor sicherheitshalber nicht.
+Für die geräteübergreifende Plattform-Auswahl siehe `LOCK-SETUP.md` und `../ATPantherLockFunction/README.md`. Mit der Auswahl „Android“ oder „Windows“ wird festgelegt, welche Version monitoren darf; ohne konfigurierte Sperre startet der Monitor sicherheitshalber nicht.
 
 ## GitHub Actions
 

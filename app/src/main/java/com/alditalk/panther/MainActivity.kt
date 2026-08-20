@@ -21,8 +21,10 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.alditalk.panther.data.LogDao
 import com.alditalk.panther.data.LogEntry
+import com.alditalk.panther.lock.MonitorDeviceIdentity
+import com.alditalk.panther.lock.MonitorLockClient
+import com.alditalk.panther.lock.MonitorLockConfig
 import com.alditalk.panther.service.MonitorService
-import com.google.android.material.switchmaterial.SwitchMaterial
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.textfield.TextInputEditText
 import kotlinx.coroutines.Dispatchers
@@ -53,7 +55,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var etPassword: TextInputEditText
     private lateinit var etThreshold: TextInputEditText
     private lateinit var etInterval: TextInputEditText
-    private lateinit var swSingleMonitor: SwitchMaterial
+    private lateinit var rgMonitorPlatform: android.widget.RadioGroup
     private lateinit var tvStatus: android.widget.TextView
     private lateinit var btnToggle: MaterialButton
     private lateinit var btnSave: MaterialButton
@@ -109,7 +111,7 @@ class MainActivity : AppCompatActivity() {
         etPassword = findViewById(R.id.etPassword)
         etThreshold = findViewById(R.id.etThreshold)
         etInterval = findViewById(R.id.etInterval)
-        swSingleMonitor = findViewById(R.id.swSingleMonitor)
+        rgMonitorPlatform = findViewById(R.id.rgMonitorPlatform)
         tvStatus = findViewById(R.id.tvStatus)
         btnToggle = findViewById(R.id.btnToggleService)
         btnSave = findViewById(R.id.btnSaveCredentials)
@@ -134,9 +136,10 @@ class MainActivity : AppCompatActivity() {
         // Anforderung 1: Gespeicherte Login-Daten UND Einstellungen laden
         loadCredentials()
 
-        // Save credentials button – speichert nun auch die Einstellungen (Schwelle/Intervall)
+        // Save credentials button – speichert auch die aktive Monitor-Plattform.
         btnSave.setOnClickListener {
             saveCredentials()
+            lifecycleScope.launch { selectRemotePlatform(showMessage = false) }
             Toast.makeText(this, "Login-Daten und Einstellungen gespeichert", Toast.LENGTH_SHORT).show()
         }
 
@@ -214,7 +217,7 @@ class MainActivity : AppCompatActivity() {
             .putString("password", etPassword.text.toString().trim())
             .putString("threshold_mb", etThreshold.text.toString().trim())
             .putString("interval_sec", etInterval.text.toString().trim())
-            .putBoolean("single_monitor_enabled", swSingleMonitor.isChecked)
+            .putString("monitor_platform", selectedPlatform())
             .apply()
     }
 
@@ -228,7 +231,36 @@ class MainActivity : AppCompatActivity() {
         // Anforderung 2: Standardwert 850 MB beim ersten App-Start (vorher 250)
         etThreshold.setText(prefs.getString("threshold_mb", defaultThresholdMb.toInt().toString()))
         etInterval.setText(prefs.getString("interval_sec", defaultIntervalSec.toString()))
-        swSingleMonitor.isChecked = prefs.getBoolean("single_monitor_enabled", true)
+        rgMonitorPlatform.check(
+            if (prefs.getString("monitor_platform", "android") == "windows") {
+                R.id.rbWindows
+            } else {
+                R.id.rbAndroid
+            }
+        )
+    }
+
+    private fun selectedPlatform(): String =
+        if (rgMonitorPlatform.checkedRadioButtonId == R.id.rbWindows) "windows" else "android"
+
+    private suspend fun selectRemotePlatform(showMessage: Boolean): Boolean {
+        if (!MonitorLockConfig.isConfigured) {
+            if (showMessage) {
+                Toast.makeText(this, "Lock-Backend noch nicht eingerichtet", Toast.LENGTH_LONG).show()
+            }
+            return false
+        }
+        val phone = etPhone.text.toString().trim()
+        if (phone.isEmpty()) return false
+        val selected = MonitorLockClient().selectPlatform(
+            phone,
+            MonitorDeviceIdentity.get(this),
+            selectedPlatform(),
+        )
+        if (!selected && showMessage) {
+            Toast.makeText(this, "Aktive Monitor-Plattform konnte nicht gespeichert werden", Toast.LENGTH_LONG).show()
+        }
+        return selected
     }
 
     private fun parseThreshold(): Float =
@@ -406,25 +438,27 @@ class MainActivity : AppCompatActivity() {
 
         // Für einen Boot-Neustart die zuletzt gestarteten Werte sichern.
         saveCredentials()
+        lifecycleScope.launch {
+            if (!selectRemotePlatform(showMessage = true)) return@launch
 
-        val intent = Intent(this, MonitorService::class.java).apply {
+            val intent = Intent(this@MainActivity, MonitorService::class.java).apply {
             putExtra(MonitorService.EXTRA_PHONE, phone)
             putExtra(MonitorService.EXTRA_PASSWORD, password)
             putExtra(MonitorService.EXTRA_THRESHOLD_MB, threshold)
-            putExtra(MonitorService.EXTRA_INTERVAL_SEC, interval)
-            putExtra(MonitorService.EXTRA_SINGLE_MONITOR, swSingleMonitor.isChecked)
-        }
+                putExtra(MonitorService.EXTRA_INTERVAL_SEC, interval)
+            }
 
-        // Kompatibel ab API 24; auf Android 11 wird der Foreground-Service
-        // unmittelbar aus der sichtbaren Activity gestartet.
-        ContextCompat.startForegroundService(this, intent)
-        getEncryptedPrefs().edit()
-            .putBoolean("monitor_enabled", true)
-            .apply()
-        isServiceRunning = true
-        btnToggle.text = "Monitor stoppen"
-        tvStatus.text = "Starte..."
-        tvStatus.setTextColor(getColor(R.color.status_warn))
+            // Kompatibel ab API 24; auf Android 11 wird der Foreground-Service
+            // unmittelbar aus der sichtbaren Activity gestartet.
+            ContextCompat.startForegroundService(this@MainActivity, intent)
+            getEncryptedPrefs().edit()
+                .putBoolean("monitor_enabled", true)
+                .apply()
+            isServiceRunning = true
+            btnToggle.text = "Monitor stoppen"
+            tvStatus.text = "Starte..."
+            tvStatus.setTextColor(getColor(R.color.status_warn))
+        }
     }
 
     private fun stopMonitor() {

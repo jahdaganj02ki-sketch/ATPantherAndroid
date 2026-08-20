@@ -24,6 +24,7 @@ Eine Datenbank und Collection anlegen. Die Collection benötigt diese Attribute:
 | `deviceId` | String, mindestens 1 Zeichen | ja | – |
 | `expiresAt` | Integer | ja | 0 |
 | `updatedAt` | Integer | ja | 0 |
+| `activePlatform` | String (`android` oder `windows`) | ja | `android` |
 
 Die Function verwendet den SHA-256-Hash der Rufnummer als Dokument-ID. Die Dokument-ID besteht aus 64 Kleinbuchstaben/Ziffern.
 
@@ -55,8 +56,9 @@ Die Apps senden niemals den Appwrite-API-Key. Der API-Key bleibt ausschließlich
 
 ## Verhalten
 
-- `acquire`: Lease für 120 Sekunden reservieren.
-- `heartbeat`: Lease regelmäßig erneuern.
+- `select`: Aktive Plattform auf `android` oder `windows` setzen.
+- `acquire`: Lease für 120 Sekunden auf der ausgewählten Plattform reservieren.
+- `heartbeat`: Lease regelmäßig erneuern; eine andere Plattform wird abgewiesen.
 - `release`: Lease beim normalen Stop freigeben.
 - Bei ausbleibendem Heartbeat verfällt die Lease automatisch.
-- Bei Lock-Verlust stoppt der jeweilige Monitor sicher.
+- Bei Plattformwechsel oder Lock-Verlust stoppt der nicht ausgewählte Monitor sicher.

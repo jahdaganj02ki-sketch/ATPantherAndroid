@@ -1,4 +1,4 @@
-import { Client, Databases, ID } from "node-appwrite";
+import { Client, Databases } from "node-appwrite";
 import crypto from "node:crypto";
 
 const queues = new Map();
@@ -6,6 +6,7 @@ const databaseId = process.env.LOCK_DATABASE_ID;
 const collectionId = process.env.LOCK_COLLECTION_ID;
 const sharedSecret = process.env.LOCK_SHARED_SECRET;
 const ttlSeconds = 120;
+const platforms = new Set(["android", "windows"]);
 
 export default async ({ req, res, error }) => {
   try {
@@ -20,12 +21,15 @@ export default async ({ req, res, error }) => {
     const operation = String(body.operation ?? "");
     const phoneHash = String(body.phoneHash ?? "");
     const deviceId = String(body.deviceId ?? "");
+    const platform = String(body.platform ?? "");
     if (!/^[a-f0-9]{64}$/.test(phoneHash) || !deviceId ||
-        !["acquire", "heartbeat", "release"].includes(operation)) {
+        !["select", "acquire", "heartbeat", "release"].includes(operation) ||
+        !platforms.has(platform)) {
       return res.json({ granted: false, error: "Invalid request" }, 400);
     }
 
-    const result = await enqueue(phoneHash, () => handleLock(operation, phoneHash, deviceId));
+    const result = await enqueue(phoneHash, () =>
+      handleLock(operation, phoneHash, deviceId, platform));
     return res.json(result, 200);
   } catch (exception) {
     error(exception?.stack ?? String(exception));
@@ -33,7 +37,7 @@ export default async ({ req, res, error }) => {
   }
 };
 
-async function handleLock(operation, phoneHash, deviceId) {
+async function handleLock(operation, phoneHash, deviceId, platform) {
   const client = new Client()
     .setEndpoint(process.env.APPWRITE_FUNCTION_API_ENDPOINT ?? process.env.APPWRITE_ENDPOINT)
     .setProject(process.env.APPWRITE_FUNCTION_PROJECT_ID ?? process.env.APPWRITE_PROJECT_ID)
@@ -49,27 +53,51 @@ async function handleLock(operation, phoneHash, deviceId) {
     if (exception?.code !== 404) throw exception;
   }
 
+  if (operation === "select") {
+    const samePlatform = document?.activePlatform === platform;
+    const data = {
+      // A platform change invalidates the old lease immediately. Selecting the
+      // same platform keeps an already running monitor alive.
+      deviceId: samePlatform ? document.deviceId : "selector",
+      expiresAt: samePlatform ? Number(document.expiresAt) : 0,
+      updatedAt: now,
+      activePlatform: platform,
+    };
+    if (document) {
+      await databases.updateDocument(databaseId, collectionId, phoneHash, data);
+    } else {
+      await databases.createDocument(databaseId, collectionId, phoneHash, data);
+    }
+    return { granted: true, activePlatform: platform, expiresAt: data.expiresAt };
+  }
+
+  const activePlatform = document?.activePlatform ?? platform;
+  if (activePlatform !== platform) {
+    return { granted: false, reason: "selected_platform", activePlatform };
+  }
+
   if (operation === "acquire") {
     if (document && document.deviceId !== deviceId && Number(document.expiresAt) > now) {
-      return { granted: false, expiresAt: Number(document.expiresAt) };
+      return { granted: false, reason: "monitor_locked", activePlatform,
+        expiresAt: Number(document.expiresAt) };
     }
-    const data = { deviceId, expiresAt, updatedAt: now };
+    const data = { deviceId, expiresAt, updatedAt: now, activePlatform };
     if (!document) {
       try {
         await databases.createDocument(databaseId, collectionId, phoneHash, data);
       } catch (exception) {
-        // A simultaneous first acquire can only be won by one creator.
-        if (exception?.code === 409) return { granted: false, expiresAt: now + ttlSeconds };
+        if (exception?.code === 409) return { granted: false, reason: "monitor_locked", activePlatform };
         throw exception;
       }
     } else {
       await databases.updateDocument(databaseId, collectionId, phoneHash, data);
     }
-    return { granted: true, expiresAt };
+    return { granted: true, activePlatform, expiresAt };
   }
 
   if (!document || document.deviceId !== deviceId || Number(document.expiresAt) <= now) {
-    return { granted: false, expiresAt: document ? Number(document.expiresAt) : 0 };
+    return { granted: false, reason: "monitor_locked", activePlatform,
+      expiresAt: document ? Number(document.expiresAt) : 0 };
   }
 
   if (operation === "heartbeat") {
@@ -77,16 +105,18 @@ async function handleLock(operation, phoneHash, deviceId) {
       deviceId,
       expiresAt,
       updatedAt: now,
+      activePlatform,
     });
-    return { granted: true, expiresAt };
+    return { granted: true, activePlatform, expiresAt };
   }
 
   await databases.updateDocument(databaseId, collectionId, phoneHash, {
     deviceId: "released",
     expiresAt: 0,
     updatedAt: now,
+    activePlatform,
   });
-  return { granted: true, expiresAt: 0 };
+  return { granted: true, activePlatform, expiresAt: 0 };
 }
 
 function enqueue(key, task) {

@@ -13,7 +13,7 @@ public sealed class MainForm : Form
     private readonly TextBox _passwordBox = new();
     private readonly NumericUpDown _thresholdBox = new();
     private readonly NumericUpDown _intervalBox = new();
-    private readonly CheckBox _singleMonitor = new();
+    private readonly ComboBox _monitorPlatform = new();
     private readonly CheckBox _startWithWindows = new();
     private readonly Label _statusLabel = new();
     private readonly Button _startButton = new();
@@ -115,9 +115,10 @@ public sealed class MainForm : Form
 
         ConfigureNumeric(_thresholdBox, 0, 999999, 850, 0);
         ConfigureNumeric(_intervalBox, 60, 86400, 60, 0);
-        _singleMonitor.Text = "Nur einen Monitor gleichzeitig zulassen";
-        _singleMonitor.Checked = true;
-        _singleMonitor.AutoSize = true;
+        _monitorPlatform.DropDownStyle = ComboBoxStyle.DropDownList;
+        _monitorPlatform.Items.AddRange(new object[] { "Android", "Windows" });
+        _monitorPlatform.SelectedIndex = 1;
+        _monitorPlatform.Width = 140;
         _startWithWindows.Text = "Mit Windows starten und im Tray beginnen";
         _startWithWindows.AutoSize = true;
 
@@ -125,7 +126,8 @@ public sealed class MainForm : Form
         table.Controls.Add(_thresholdBox, 1, 0);
         table.Controls.Add(CreateLabel("Intervall (Sek.):"), 0, 1);
         table.Controls.Add(_intervalBox, 1, 1);
-        table.Controls.Add(_singleMonitor, 1, 2);
+        table.Controls.Add(CreateLabel("Monitor läuft auf:"), 0, 2);
+        table.Controls.Add(_monitorPlatform, 1, 2);
         table.Controls.Add(_startWithWindows, 1, 3);
         group.Controls.Add(table);
         return group;
@@ -230,7 +232,7 @@ public sealed class MainForm : Form
         _passwordBox.Text = settings.Password;
         _thresholdBox.Value = Clamp(settings.ThresholdMb, _thresholdBox.Minimum, _thresholdBox.Maximum);
         _intervalBox.Value = Clamp(settings.IntervalSec, _intervalBox.Minimum, _intervalBox.Maximum);
-        _singleMonitor.Checked = settings.SingleMonitorEnabled;
+        _monitorPlatform.SelectedIndex = settings.MonitorPlatform == "android" ? 0 : 1;
         _startWithWindows.Checked = settings.StartWithWindows;
         _deviceId = settings.DeviceId;
     }
@@ -264,6 +266,12 @@ public sealed class MainForm : Form
         var settings = ReadSettings();
         settings.MonitorEnabled = true;
         SaveSettingsObject(settings);
+        if (!await _monitor.SelectPlatformAsync(settings))
+        {
+            MessageBox.Show(this, "Die aktive Monitor-Plattform konnte nicht gesetzt werden. Prüfe die Lock-Konfiguration.",
+                "AT Panther", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
         await _monitor.StartAsync(settings);
         UpdateMonitorButtons();
     }
@@ -287,7 +295,7 @@ public sealed class MainForm : Form
             ThresholdMb = (float)_thresholdBox.Value,
             IntervalSec = (int)_intervalBox.Value,
             MonitorEnabled = _monitor.IsRunning,
-            SingleMonitorEnabled = _singleMonitor.Checked,
+            MonitorPlatform = _monitorPlatform.SelectedIndex == 0 ? "android" : "windows",
             DeviceId = _deviceId,
             StartWithWindows = _startWithWindows.Checked
         };
@@ -298,6 +306,10 @@ public sealed class MainForm : Form
         var settings = ReadSettings();
         settings.MonitorEnabled = monitorEnabled || _monitor.IsRunning;
         SaveSettingsObject(settings);
+        if (_monitorPlatform.SelectedIndex >= 0)
+        {
+            _ = _monitor.SelectPlatformAsync(settings);
+        }
         MessageBox.Show(this, "Einstellungen gespeichert.", "AT Panther",
             MessageBoxButtons.OK, MessageBoxIcon.Information);
     }

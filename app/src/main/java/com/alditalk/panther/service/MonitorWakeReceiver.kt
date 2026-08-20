@@ -68,7 +68,6 @@ class MonitorWakeReceiver : BroadcastReceiver() {
             // Unter 60 Sekunden würden unnötig viele Mobilfunkanfragen und Wakeups
             // entstehen; der Monitor verwendet denselben Mindestwert wie die Activity.
             putExtra(MonitorService.EXTRA_INTERVAL_SEC, interval.coerceAtLeast(60))
-            putExtra(MonitorService.EXTRA_SINGLE_MONITOR, prefs.getBoolean("single_monitor_enabled", true))
         }
 
         try {

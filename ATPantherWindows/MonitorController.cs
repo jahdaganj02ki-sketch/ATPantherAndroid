@@ -18,6 +18,14 @@ internal sealed class MonitorController : IAsyncDisposable
     public bool IsRunning { get; private set; }
     public event Action<MonitorStatus>? StatusChanged;
 
+    public async Task<bool> SelectPlatformAsync(AppSettings settings, CancellationToken cancellationToken = default)
+    {
+        if (!MonitorLockConfig.IsConfigured) return false;
+        var lockClient = new MonitorLockClient();
+        return await lockClient.SelectPlatformAsync(
+            settings.Phone, settings.DeviceId, settings.MonitorPlatform, cancellationToken);
+    }
+
     public async Task StartAsync(AppSettings settings)
     {
         await StopAsync();
@@ -52,19 +60,18 @@ internal sealed class MonitorController : IAsyncDisposable
     private async Task RunAsync(AppSettings settings, CancellationToken cancellationToken)
     {
         MonitorLockClient? lockClient = null;
-        if (settings.SingleMonitorEnabled)
+        if (!MonitorLockConfig.IsConfigured)
         {
-            if (!MonitorLockConfig.IsConfigured)
-            {
-                Report("Gemeinsame Monitor-Sperre ist nicht eingerichtet", notify: true, isError: true);
-                return;
-            }
-            lockClient = new MonitorLockClient();
-            if (!await lockClient.AcquireAsync(settings.Phone, settings.DeviceId, cancellationToken))
-            {
-                Report("Monitor läuft bereits auf dem anderen Gerät", notify: true, isError: true);
-                return;
-            }
+            Report("Gemeinsame Monitor-Sperre ist nicht eingerichtet", notify: true, isError: true);
+            return;
+        }
+        lockClient = new MonitorLockClient();
+        if (!await lockClient.AcquireAsync(
+                settings.Phone, settings.DeviceId, settings.MonitorPlatform, cancellationToken))
+        {
+            Report($"Monitor läuft nicht auf {settings.MonitorPlatform} – die andere Plattform ist ausgewählt oder bereits aktiv",
+                notify: true, isError: true);
+            return;
         }
 
         try
@@ -74,7 +81,8 @@ internal sealed class MonitorController : IAsyncDisposable
         finally
         {
             if (lockClient is not null)
-                await lockClient.ReleaseAsync(settings.Phone, settings.DeviceId, CancellationToken.None);
+                await lockClient.ReleaseAsync(
+                    settings.Phone, settings.DeviceId, settings.MonitorPlatform, CancellationToken.None);
         }
     }
 
@@ -101,7 +109,8 @@ internal sealed class MonitorController : IAsyncDisposable
             while (!cancellationToken.IsCancellationRequested)
             {
                 if (lockClient is not null &&
-                    !await lockClient.HeartbeatAsync(settings.Phone, settings.DeviceId, cancellationToken))
+                    !await lockClient.HeartbeatAsync(
+                        settings.Phone, settings.DeviceId, settings.MonitorPlatform, cancellationToken))
                 {
                     Report("Gemeinsame Monitor-Sperre verloren – Monitor gestoppt", notify: true, isError: true);
                     return;

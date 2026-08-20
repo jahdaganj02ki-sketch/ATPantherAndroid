@@ -13,6 +13,7 @@ import com.alditalk.panther.api.AldiTalkApi
 import com.alditalk.panther.auth.AuthService
 import com.alditalk.panther.data.AppDatabase
 import com.alditalk.panther.data.LogEntry
+import com.alditalk.panther.lock.MonitorDeviceIdentity
 import com.alditalk.panther.lock.MonitorLockClient
 import com.alditalk.panther.lock.MonitorLockConfig
 import kotlinx.coroutines.*
@@ -44,7 +45,6 @@ class MonitorService : Service() {
         const val EXTRA_PASSWORD = "password"
         const val EXTRA_THRESHOLD_MB = "threshold_mb"
         const val EXTRA_INTERVAL_SEC = "interval_sec"
-        const val EXTRA_SINGLE_MONITOR = "single_monitor"
         const val ACTION_STOP = "com.alditalk.panther.STOP"
 
         /** Broadcast action sent on status update. */
@@ -61,7 +61,6 @@ class MonitorService : Service() {
     private var lastPassword: String = ""
     private var lastThresholdMb: Float = DEFAULT_THRESHOLD_MB
     private var lastIntervalSec: Int = DEFAULT_INTERVAL_SEC
-    private var lastSingleMonitorEnabled: Boolean = true
 
     override fun onCreate() {
         super.onCreate()
@@ -85,7 +84,6 @@ class MonitorService : Service() {
                 EXTRA_INTERVAL_SEC,
                 DEFAULT_INTERVAL_SEC,
             ).coerceAtLeast(MIN_INTERVAL_SEC)
-            lastSingleMonitorEnabled = intent.getBooleanExtra(EXTRA_SINGLE_MONITOR, true)
         }
 
         if (lastPhone.isEmpty() || lastPassword.isEmpty()) {
@@ -108,7 +106,7 @@ class MonitorService : Service() {
         // Ein dauerhafter PARTIAL_WAKE_LOCK würde auf dem X11 Pro nur Akku kosten.
         val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
         serviceJob = scope.launch {
-            monitorLoop(lastPhone, lastPassword, lastThresholdMb, lastIntervalSec, lastSingleMonitorEnabled)
+            monitorLoop(lastPhone, lastPassword, lastThresholdMb, lastIntervalSec)
         }
 
         // START_STICKY bittet Android bzw. die Hersteller-ROM um Neustart,
@@ -188,21 +186,18 @@ class MonitorService : Service() {
         password: String,
         thresholdMb: Float,
         intervalSec: Int,
-        singleMonitorEnabled: Boolean,
     ) {
         val logDao = AppDatabase.getDatabase(this).logDao()
-        val lockClient = if (singleMonitorEnabled) MonitorLockClient() else null
-        val deviceId = getOrCreateDeviceId()
+        val lockClient = MonitorLockClient()
+        val deviceId = MonitorDeviceIdentity.get(this)
 
-        if (singleMonitorEnabled) {
-            if (!MonitorLockConfig.isConfigured) {
-                stopBecauseLockUnavailable(logDao, "Gemeinsame Monitor-Sperre ist nicht eingerichtet")
-                return
-            }
-            if (!lockClient!!.acquire(phone, deviceId)) {
-                stopBecauseLockUnavailable(logDao, "Monitor läuft bereits auf dem anderen Gerät")
-                return
-            }
+        if (!MonitorLockConfig.isConfigured) {
+            stopBecauseLockUnavailable(logDao, "Gemeinsame Monitor-Sperre ist nicht eingerichtet")
+            return
+        }
+        if (!lockClient.acquire(phone, deviceId)) {
+            stopBecauseLockUnavailable(logDao, "Monitor läuft nicht auf Android – Windows ist ausgewählt oder bereits aktiv")
+            return
         }
 
         try {
@@ -210,7 +205,7 @@ class MonitorService : Service() {
                 phone, password, thresholdMb, intervalSec, logDao, lockClient, deviceId
             )
         } finally {
-            if (lockClient != null) lockClient.release(phone, deviceId)
+            lockClient.release(phone, deviceId)
         }
     }
 
@@ -220,7 +215,7 @@ class MonitorService : Service() {
         thresholdMb: Float,
         intervalSec: Int,
         logDao: com.alditalk.panther.data.LogDao,
-        lockClient: MonitorLockClient?,
+        lockClient: MonitorLockClient,
         deviceId: String,
     ) {
         // Initialer Login
@@ -247,7 +242,7 @@ class MonitorService : Service() {
 
         while (isRunning && serviceJob?.isActive == true) {
             try {
-                if (lockClient != null && !lockClient.heartbeat(phone, deviceId)) {
+                if (!lockClient.heartbeat(phone, deviceId)) {
                     stopBecauseLockUnavailable(logDao, "Gemeinsame Monitor-Sperre verloren – Monitor gestoppt")
                     return
                 }
@@ -338,15 +333,6 @@ class MonitorService : Service() {
 
             delay(intervalSec.coerceAtLeast(MIN_INTERVAL_SEC) * 1000L)
         }
-    }
-
-    private fun getOrCreateDeviceId(): String {
-        val prefs = (application as com.alditalk.panther.PantherApp).securePreferences()
-        val existing = prefs.getString("monitor_device_id", null)
-        if (!existing.isNullOrBlank()) return existing
-        val created = java.util.UUID.randomUUID().toString()
-        prefs.edit().putString("monitor_device_id", created).commit()
-        return created
     }
 
     private suspend fun stopBecauseLockUnavailable(

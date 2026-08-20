@@ -15,6 +15,6 @@ Repo: `jahdaganj00ki-eng/ATPantherAndroid`
 
 ## Gemeinsamer Monitor-Lock
 
-Android und Windows können optional über eine kostenlose Appwrite-Function eine gemeinsame Lease-Sperre verwenden. Dadurch darf pro Rufnummer nur ein Monitor aktiv sein. Die Sperre wird per Heartbeat erneuert und bei Verbindungs- oder Lock-Verlust sicher freigegeben bzw. gestoppt.
+Android und Windows verwenden über eine kostenlose Appwrite-Function eine gemeinsame Plattform-Auswahl. Mit „Android“ oder „Windows“ wird festgelegt, welche Version den Monitor ausführen darf. Die Lease wird per Heartbeat erneuert; die jeweils nicht ausgewählte Version startet nicht bzw. stoppt sicher.
 
 Einrichtung: `ATPantherLockFunction/README.md` und `ATPantherWindows/LOCK-SETUP.md`.

@@ -9,17 +9,24 @@ internal sealed class MonitorLockClient
 {
     private readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(15) };
 
-    public async Task<bool> AcquireAsync(string phone, string deviceId, CancellationToken cancellationToken) =>
-        await SendAsync("acquire", phone, deviceId, cancellationToken);
+    public async Task<bool> SelectPlatformAsync(string phone, string deviceId, string platform,
+        CancellationToken cancellationToken) =>
+        await SendAsync("select", phone, deviceId, platform, cancellationToken);
 
-    public async Task<bool> HeartbeatAsync(string phone, string deviceId, CancellationToken cancellationToken) =>
-        await SendAsync("heartbeat", phone, deviceId, cancellationToken);
+    public async Task<bool> AcquireAsync(string phone, string deviceId, string platform,
+        CancellationToken cancellationToken) =>
+        await SendAsync("acquire", phone, deviceId, platform, cancellationToken);
 
-    public async Task ReleaseAsync(string phone, string deviceId, CancellationToken cancellationToken)
+    public async Task<bool> HeartbeatAsync(string phone, string deviceId, string platform,
+        CancellationToken cancellationToken) =>
+        await SendAsync("heartbeat", phone, deviceId, platform, cancellationToken);
+
+    public async Task ReleaseAsync(string phone, string deviceId, string platform,
+        CancellationToken cancellationToken)
     {
         try
         {
-            await SendAsync("release", phone, deviceId, cancellationToken);
+            await SendAsync("release", phone, deviceId, platform, cancellationToken);
         }
         catch
         {
@@ -28,7 +35,7 @@ internal sealed class MonitorLockClient
     }
 
     private async Task<bool> SendAsync(string operation, string phone, string deviceId,
-        CancellationToken cancellationToken)
+        string platform, CancellationToken cancellationToken)
     {
         if (!MonitorLockConfig.IsConfigured) return false;
         var payload = new
@@ -39,6 +46,7 @@ internal sealed class MonitorLockClient
                 operation,
                 phoneHash = HashPhone(phone),
                 deviceId,
+                platform,
                 secret = MonitorLockConfig.SharedSecret
             }),
             method = "POST",

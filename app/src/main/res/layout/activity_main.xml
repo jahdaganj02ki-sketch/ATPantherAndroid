@@ -151,14 +151,35 @@
                     </com.google.android.material.textfield.TextInputLayout>
                 </LinearLayout>
 
-                <com.google.android.material.switchmaterial.SwitchMaterial
-                    android:id="@+id/swSingleMonitor"
-                    android:layout_width="match_parent"
+                <TextView
+                    android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"
-                    android:text="Nur einen Monitor gleichzeitig zulassen"
-                    android:textColor="@color/text_primary"
-                    android:checked="true" />
+                    android:text="Monitor läuft auf:"
+                    android:textColor="@color/text_secondary" />
+
+                <RadioGroup
+                    android:id="@+id/rgMonitorPlatform"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+
+                    <RadioButton
+                        android:id="@+id/rbAndroid"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Android"
+                        android:textColor="@color/text_primary"
+                        android:checked="true" />
+
+                    <RadioButton
+                        android:id="@+id/rbWindows"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="24dp"
+                        android:text="Windows"
+                        android:textColor="@color/text_primary" />
+                </RadioGroup>
 
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>

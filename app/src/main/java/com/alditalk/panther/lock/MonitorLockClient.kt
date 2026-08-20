@@ -14,27 +14,36 @@ class MonitorLockClient {
         .callTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
         .build()
 
+    suspend fun selectPlatform(phone: String, deviceId: String, platform: String): Boolean =
+        send("select", phone, deviceId, platform)
+
     suspend fun acquire(phone: String, deviceId: String): Boolean =
-        send("acquire", phone, deviceId)
+        send("acquire", phone, deviceId, "android")
 
     suspend fun heartbeat(phone: String, deviceId: String): Boolean =
-        send("heartbeat", phone, deviceId)
+        send("heartbeat", phone, deviceId, "android")
 
     suspend fun release(phone: String, deviceId: String) {
         try {
-            send("release", phone, deviceId)
+            send("release", phone, deviceId, "android")
         } catch (_: Exception) {
             // Die TTL gibt die Sperre auch nach einem Netzwerkfehler frei.
         }
     }
 
-    private suspend fun send(operation: String, phone: String, deviceId: String): Boolean =
+    private suspend fun send(
+        operation: String,
+        phone: String,
+        deviceId: String,
+        platform: String,
+    ): Boolean =
         withContext(Dispatchers.IO) {
             if (!MonitorLockConfig.isConfigured) return@withContext false
             val body = JSONObject()
                 .put("operation", operation)
                 .put("phoneHash", hashPhone(phone))
                 .put("deviceId", deviceId)
+                .put("platform", platform)
                 .put("secret", MonitorLockConfig.SHARED_SECRET)
             val execution = JSONObject()
                 .put("async", false)
