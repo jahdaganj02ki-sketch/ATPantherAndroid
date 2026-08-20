@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.util.Log
+import androidx.core.content.ContextCompat
 
 /**
  * Empfangs-Receiver für AlarmManager-Fallback und (optional) Boot-Completed.
@@ -34,23 +35,41 @@ class MonitorWakeReceiver : BroadcastReceiver() {
      *liest der Service beim naechsten Nutzer-Klick neu ein.
      */
     private fun restartMonitor(context: Context, source: Intent?) {
+        val prefs = context.getSharedPreferences("at_panther_secure", Context.MODE_PRIVATE)
+        val isBoot = source?.action == Intent.ACTION_BOOT_COMPLETED ||
+            source?.action == "android.intent.action.QUICKBOOT_POWERON"
+
+        // Nach einem Neustart nur wiederherstellen, wenn der Nutzer den Monitor
+        // vorher aktiv gestartet hatte. So startet die App nicht ungefragt.
+        if (isBoot && !prefs.getBoolean("monitor_enabled", false)) return
+
+        val phone = source?.getStringExtra(MonitorService.EXTRA_PHONE)
+            ?: prefs.getString("phone", null)
+        val password = source?.getStringExtra(MonitorService.EXTRA_PASSWORD)
+            ?: prefs.getString("password", null)
+        if (phone.isNullOrBlank() || password.isNullOrBlank()) {
+            Log.i(TAG, "Monitor-Neustart übersprungen: keine gespeicherten Login-Daten")
+            return
+        }
+
+        val threshold = source?.getFloatExtra(
+            MonitorService.EXTRA_THRESHOLD_MB,
+            prefs.getString("threshold_mb", "850")?.toFloatOrNull() ?: 850f
+        ) ?: 850f
+        val interval = source?.getIntExtra(
+            MonitorService.EXTRA_INTERVAL_SEC,
+            prefs.getString("interval_sec", "60")?.toIntOrNull() ?: 60
+        ) ?: 60
+
         val svcIntent = Intent(context, MonitorService::class.java).apply {
-            source?.getStringExtra(MonitorService.EXTRA_PHONE)?.let { putExtra(MonitorService.EXTRA_PHONE, it) }
-            source?.getStringExtra(MonitorService.EXTRA_PASSWORD)?.let { putExtra(MonitorService.EXTRA_PASSWORD, it) }
-            source?.getFloatExtra(MonitorService.EXTRA_THRESHOLD_MB, 850f)?.let {
-                putExtra(MonitorService.EXTRA_THRESHOLD_MB, it)
-            }
-            source?.getIntExtra(MonitorService.EXTRA_INTERVAL_SEC, 60)?.let {
-                putExtra(MonitorService.EXTRA_INTERVAL_SEC, it)
-            }
+            putExtra(MonitorService.EXTRA_PHONE, phone)
+            putExtra(MonitorService.EXTRA_PASSWORD, password)
+            putExtra(MonitorService.EXTRA_THRESHOLD_MB, threshold)
+            putExtra(MonitorService.EXTRA_INTERVAL_SEC, interval.coerceAtLeast(15))
         }
 
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(svcIntent)
-            } else {
-                context.startService(svcIntent)
-            }
+            ContextCompat.startForegroundService(context, svcIntent)
         } catch (e: Exception) {
             // Hintergrundstart-Restriktionen o.a. – Controller-Fehler melden, nicht crashen.
             Log.w(TAG, "Restart des MonitorService fehlgeschlagen", e)

@@ -2,6 +2,7 @@ package com.alditalk.panther
 
 import android.app.Activity
 import android.content.BroadcastReceiver
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -12,6 +13,7 @@ import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -45,6 +47,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnClearCache: MaterialButton
     private lateinit var btnExportLog: MaterialButton
     private lateinit var btnBatteryOpt: MaterialButton
+    private lateinit var btnAutoStart: MaterialButton
     private lateinit var rvLog: RecyclerView
 
     private var isServiceRunning = false
@@ -89,6 +92,7 @@ class MainActivity : AppCompatActivity() {
         btnClearCache = findViewById(R.id.btnClearCache)
         btnExportLog = findViewById(R.id.btnExportLog)
         btnBatteryOpt = findViewById(R.id.btnBatteryOpt)
+        btnAutoStart = findViewById(R.id.btnAutoStart)
         rvLog = findViewById(R.id.rvLog)
 
         rvLog.layoutManager = LinearLayoutManager(this)
@@ -126,6 +130,11 @@ class MainActivity : AppCompatActivity() {
         // Anforderung 5: Direkt zum Batterie-Optimierungs-Dialog (EMUI/Huawei)
         btnBatteryOpt.setOnClickListener {
             requestIgnoreBatteryOptimizations()
+        }
+
+        // Xiaomi/Redmi: MIUI-Autostart explizit freigeben
+        btnAutoStart.setOnClickListener {
+            openAutoStartSettings()
         }
 
         // Observe log entries
@@ -282,6 +291,38 @@ class MainActivity : AppCompatActivity() {
      * Batterie-Optimierung auszunehmen (ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).
      * Empfohlen fuer aggressive EMUI/Huawei-Geraete wie AGS2-L09 (Android 8.0).
      */
+    /**
+     * Öffnet auf Xiaomi/Redmi/POCO den MIUI-Autostart. Auf anderen Geräten
+     * wird stattdessen die App-Detailseite als sichere Fallback-Einstellung geöffnet.
+     */
+    private fun openAutoStartSettings() {
+        val manufacturer = "${Build.MANUFACTURER} ${Build.BRAND}".lowercase(Locale.ROOT)
+        if (manufacturer.contains("xiaomi") ||
+            manufacturer.contains("redmi") ||
+            manufacturer.contains("poco")
+        ) {
+            try {
+                startActivity(Intent().apply {
+                    component = ComponentName(
+                        "com.miui.securitycenter",
+                        "com.miui.permcenter.autostart.AutoStartManagementActivity"
+                    )
+                })
+                return
+            } catch (e: Exception) {
+                android.util.Log.w("MainActivity", "MIUI-Autostart nicht verfügbar", e)
+            }
+        }
+
+        try {
+            startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                data = Uri.parse("package:$packageName")
+            })
+        } catch (e: Exception) {
+            Toast.makeText(this, "Autostart bitte manuell in den App-Einstellungen aktivieren", Toast.LENGTH_LONG).show()
+        }
+    }
+
     private fun requestIgnoreBatteryOptimizations() {
         try {
             // Falls die App bereits auf der Whitelist steht -> nur Hinweis
@@ -323,6 +364,9 @@ class MainActivity : AppCompatActivity() {
         val threshold = parseThreshold()
         val interval = parseInterval()
 
+        // Für einen MIUI/Boot-Neustart die zuletzt gestarteten Werte sichern.
+        saveCredentials()
+
         val intent = Intent(this, MonitorService::class.java).apply {
             putExtra(MonitorService.EXTRA_PHONE, phone)
             putExtra(MonitorService.EXTRA_PASSWORD, password)
@@ -330,7 +374,12 @@ class MainActivity : AppCompatActivity() {
             putExtra(MonitorService.EXTRA_INTERVAL_SEC, interval)
         }
 
-        startForegroundService(intent)
+        // Kompatibel ab API 24; auf Android 11 wird der Foreground-Service
+        // unmittelbar aus der sichtbaren Activity gestartet.
+        ContextCompat.startForegroundService(this, intent)
+        getEncryptedPrefs().edit()
+            .putBoolean("monitor_enabled", true)
+            .apply()
         isServiceRunning = true
         btnToggle.text = "Monitor stoppen"
         tvStatus.text = "Starte..."
@@ -342,6 +391,9 @@ class MainActivity : AppCompatActivity() {
             action = MonitorService.ACTION_STOP
         }
         startService(intent)  // Send stop action
+        getEncryptedPrefs().edit()
+            .putBoolean("monitor_enabled", false)
+            .apply()
         isServiceRunning = false
         btnToggle.text = "Monitor starten"
         tvStatus.text = "Gestoppt"
