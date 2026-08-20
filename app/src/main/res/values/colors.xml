@@ -1,20 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Black Theme: echtes Schwarz als Haupt-Hintergrund -->
-    <color name="primary">#8E24AA</color>            <!-- Violett – Buttons/Akzente -->
-    <color name="primary_dark">#6A1B9A</color>       <!-- dunkleres Violett -->
-    <color name="accent">#B388FF</color>             <!-- helleres Akzent-Violett -->
+    <!-- Striktes Schwarz-Weiß-Theme -->
+    <color name="primary">#FFFFFF</color>
+    <color name="primary_dark">#FFFFFF</color>
+    <color name="accent">#FFFFFF</color>
     <color name="white">#FFFFFF</color>
+    <color name="black">#000000</color>
 
-    <!-- Theme-Oberflächen -->
-    <color name="bg_black">#000000</color>           <!-- echter Schwarz-Hintergrund -->
-    <color name="card_bg">#0A0A0A</color>            <!-- ganz leicht gehobene Kartenfläche -->
-    <color name="card_bg_alt">#121212</color>        <!-- alternative Kartenfläche -->
-    <color name="text_primary">#FFFFFF</color>       <!-- Haupttextfarbe auf Schwarz -->
-    <color name="text_secondary">#B0B0B0</color>    <!-- Hellgrau – Labels/Hinweise -->
+    <color name="bg_black">#000000</color>
+    <color name="card_bg">#000000</color>
+    <color name="card_bg_alt">#000000</color>
+    <color name="text_primary">#FFFFFF</color>
+    <color name="text_secondary">#FFFFFF</color>
 
-    <!-- Statusfarben -->
-    <color name="status_ok">#66BB6A</color>
-    <color name="status_warn">#FFB74D</color>
-    <color name="status_err">#EF5350</color>
+    <!-- Statusfarben bleiben monochrom -->
+    <color name="status_ok">#FFFFFF</color>
+    <color name="status_warn">#FFFFFF</color>
+    <color name="status_err">#FFFFFF</color>
 </resources>

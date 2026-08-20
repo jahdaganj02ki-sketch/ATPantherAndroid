@@ -1,26 +1,33 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!--
-      AT Panther – Black Theme.
-      Basiert auf Material3 Dark-NoActionBar, damit das Theme auf Android 8.0 (API 26)
-      ohne systemweiten Dark Mode funktioniert. Tatsächliches Schwarz (#000000) wird über
-      colorBackground/backgroundColor erzwungen. Programmatisch zusätzlich via
-      AppCompatDelegate.setDefaultNightMode(MODE_NIGHT_YES) gesichert (siehe PantherApp).
-    -->
+    <!-- AT Panther – dauerhaftes Darkmode mit ausschließlich Schwarz und Weiß. -->
     <style name="Theme.ATPanther.Black" parent="Theme.Material3.Dark.NoActionBar">
         <item name="android:colorBackground">@color/bg_black</item>
         <item name="android:windowBackground">@color/bg_black</item>
+        <item name="android:statusBarColor">@color/bg_black</item>
+        <item name="android:navigationBarColor">@color/bg_black</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
         <item name="android:textColorPrimary">@color/text_primary</item>
         <item name="android:textColorSecondary">@color/text_secondary</item>
 
-        <!-- Material Colors – Violett bleibt Akzentfarbe -->
+        <!-- Material-Farben ohne violette oder sonstige Farbakzente -->
         <item name="colorPrimary">@color/primary</item>
         <item name="colorPrimaryVariant">@color/primary_dark</item>
-        <item name="colorOnPrimary">@color/white</item>
+        <item name="colorOnPrimary">@color/black</item>
+        <item name="colorPrimaryContainer">@color/white</item>
+        <item name="colorOnPrimaryContainer">@color/black</item>
         <item name="colorSecondary">@color/accent</item>
-
-        <!-- Kartenhintergrund im Black Theme -->
+        <item name="colorOnSecondary">@color/black</item>
+        <item name="colorSecondaryContainer">@color/white</item>
+        <item name="colorOnSecondaryContainer">@color/black</item>
         <item name="colorSurface">@color/card_bg</item>
         <item name="colorOnSurface">@color/text_primary</item>
+        <item name="colorSurfaceVariant">@color/bg_black</item>
+        <item name="colorOnSurfaceVariant">@color/text_secondary</item>
+        <item name="colorOutline">@color/text_primary</item>
+        <item name="colorOutlineVariant">@color/text_primary</item>
+        <item name="colorError">@color/text_primary</item>
+        <item name="colorOnError">@color/black</item>
     </style>
 </resources>

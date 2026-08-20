@@ -71,13 +71,6 @@
                         android:inputType="textPassword" />
                 </com.google.android.material.textfield.TextInputLayout>
 
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btnSaveCredentials"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:text="Speichern" />
-
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 
@@ -160,6 +153,14 @@
 
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
+
+        <!-- Speichern zwischen Einstellungen und Monitor -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnSaveCredentials"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="12dp"
+            android:text="Speichern" />
 
         <!-- ── Service Control Card ── -->
         <com.google.android.material.card.MaterialCardView
