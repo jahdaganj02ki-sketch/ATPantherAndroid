@@ -188,7 +188,7 @@ class MonitorService : Service() {
         intervalSec: Int,
     ) {
         val logDao = AppDatabase.getDatabase(this).logDao()
-        val lockClient = MonitorLockClient()
+        val lockClient = MonitorLockClient(this)
         val deviceId = MonitorDeviceIdentity.get(this)
 
         if (!MonitorLockConfig.isConfigured) {

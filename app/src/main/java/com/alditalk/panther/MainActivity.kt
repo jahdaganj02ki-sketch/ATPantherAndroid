@@ -53,6 +53,7 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var etPhone: TextInputEditText
     private lateinit var etPassword: TextInputEditText
+    private lateinit var etAppwriteApiKey: TextInputEditText
     private lateinit var etThreshold: TextInputEditText
     private lateinit var etInterval: TextInputEditText
     private lateinit var rgMonitorPlatform: android.widget.RadioGroup
@@ -109,6 +110,7 @@ class MainActivity : AppCompatActivity() {
         // View binding
         etPhone = findViewById(R.id.etPhone)
         etPassword = findViewById(R.id.etPassword)
+        etAppwriteApiKey = findViewById(R.id.etAppwriteApiKey)
         etThreshold = findViewById(R.id.etThreshold)
         etInterval = findViewById(R.id.etInterval)
         rgMonitorPlatform = findViewById(R.id.rgMonitorPlatform)
@@ -215,6 +217,7 @@ class MainActivity : AppCompatActivity() {
         prefs.edit()
             .putString("phone", etPhone.text.toString().trim())
             .putString("password", etPassword.text.toString().trim())
+            .putString("appwrite_api_key", etAppwriteApiKey.text.toString().trim())
             .putString("threshold_mb", etThreshold.text.toString().trim())
             .putString("interval_sec", etInterval.text.toString().trim())
             .putString("monitor_platform", selectedPlatform())
@@ -228,6 +231,7 @@ class MainActivity : AppCompatActivity() {
         val prefs = getEncryptedPrefs()
         etPhone.setText(prefs.getString("phone", ""))
         etPassword.setText(prefs.getString("password", ""))
+        etAppwriteApiKey.setText(prefs.getString("appwrite_api_key", ""))
         // Anforderung 2: Standardwert 850 MB beim ersten App-Start (vorher 250)
         etThreshold.setText(prefs.getString("threshold_mb", defaultThresholdMb.toInt().toString()))
         etInterval.setText(prefs.getString("interval_sec", defaultIntervalSec.toString()))
@@ -252,7 +256,7 @@ class MainActivity : AppCompatActivity() {
         }
         val phone = etPhone.text.toString().trim()
         if (phone.isEmpty()) return false
-        val selected = MonitorLockClient().selectPlatform(
+        val selected = MonitorLockClient(this).selectPlatform(
             phone,
             MonitorDeviceIdentity.get(this),
             selectedPlatform(),

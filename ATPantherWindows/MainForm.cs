@@ -11,6 +11,7 @@ public sealed class MainForm : Form
 
     private readonly TextBox _phoneBox = new();
     private readonly TextBox _passwordBox = new();
+    private readonly TextBox _appwriteApiKeyBox = new();
     private readonly NumericUpDown _thresholdBox = new();
     private readonly NumericUpDown _intervalBox = new();
     private readonly ComboBox _monitorPlatform = new();
@@ -86,8 +87,9 @@ public sealed class MainForm : Form
 
     private GroupBox CreateCredentialsGroup()
     {
-        var group = CreateGroup("Login-Daten", 720, 112);
-        var table = CreateTable(2);
+        var group = CreateGroup("Login-Daten", 720, 150);
+        var table = CreateTable(3);
+        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
         table.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
         table.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
 
@@ -96,10 +98,15 @@ public sealed class MainForm : Form
         _passwordBox.Dock = DockStyle.Fill;
         _passwordBox.UseSystemPasswordChar = true;
         _passwordBox.PlaceholderText = "Passwort";
+        _appwriteApiKeyBox.Dock = DockStyle.Fill;
+        _appwriteApiKeyBox.UseSystemPasswordChar = true;
+        _appwriteApiKeyBox.PlaceholderText = "Appwrite-API-Key";
         table.Controls.Add(CreateLabel("Rufnummer:"), 0, 0);
         table.Controls.Add(_phoneBox, 1, 0);
         table.Controls.Add(CreateLabel("Passwort:"), 0, 1);
         table.Controls.Add(_passwordBox, 1, 1);
+        table.Controls.Add(CreateLabel("Appwrite-Key:"), 0, 2);
+        table.Controls.Add(_appwriteApiKeyBox, 1, 2);
         group.Controls.Add(table);
         return group;
     }
@@ -230,6 +237,7 @@ public sealed class MainForm : Form
         var settings = _settingsStore.Load();
         _phoneBox.Text = settings.Phone;
         _passwordBox.Text = settings.Password;
+        _appwriteApiKeyBox.Text = settings.AppwriteApiKey;
         _thresholdBox.Value = Clamp(settings.ThresholdMb, _thresholdBox.Minimum, _thresholdBox.Maximum);
         _intervalBox.Value = Clamp(settings.IntervalSec, _intervalBox.Minimum, _intervalBox.Maximum);
         _monitorPlatform.SelectedIndex = settings.MonitorPlatform == "android" ? 0 : 1;
@@ -292,6 +300,7 @@ public sealed class MainForm : Form
         {
             Phone = _phoneBox.Text.Trim(),
             Password = _passwordBox.Text,
+            AppwriteApiKey = _appwriteApiKeyBox.Text.Trim(),
             ThresholdMb = (float)_thresholdBox.Value,
             IntervalSec = (int)_intervalBox.Value,
             MonitorEnabled = _monitor.IsRunning,

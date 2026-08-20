@@ -21,7 +21,7 @@ internal sealed class MonitorController : IAsyncDisposable
     public async Task<bool> SelectPlatformAsync(AppSettings settings, CancellationToken cancellationToken = default)
     {
         if (!MonitorLockConfig.IsConfigured) return false;
-        var lockClient = new MonitorLockClient();
+        var lockClient = new MonitorLockClient(settings.AppwriteApiKey);
         return await lockClient.SelectPlatformAsync(
             settings.Phone, settings.DeviceId, settings.MonitorPlatform, cancellationToken);
     }
@@ -65,7 +65,7 @@ internal sealed class MonitorController : IAsyncDisposable
             Report("Gemeinsame Monitor-Sperre ist nicht eingerichtet", notify: true, isError: true);
             return;
         }
-        lockClient = new MonitorLockClient();
+        lockClient = new MonitorLockClient(settings.AppwriteApiKey);
         if (!await lockClient.AcquireAsync(
                 settings.Phone, settings.DeviceId, settings.MonitorPlatform, cancellationToken))
         {

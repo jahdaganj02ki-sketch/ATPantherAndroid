@@ -1,5 +1,7 @@
 package com.alditalk.panther.lock
 
+import android.content.Context
+import com.alditalk.panther.PantherApp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -9,7 +11,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.security.MessageDigest
 
-class MonitorLockClient {
+class MonitorLockClient(private val context: Context) {
     private val client = OkHttpClient.Builder()
         .callTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
         .build()
@@ -39,6 +41,9 @@ class MonitorLockClient {
     ): Boolean =
         withContext(Dispatchers.IO) {
             if (!MonitorLockConfig.isConfigured) return@withContext false
+            val apiKey = (context.applicationContext as PantherApp)
+                .securePreferences().getString("appwrite_api_key", "").orEmpty()
+            if (apiKey.isBlank()) return@withContext false
             val body = JSONObject()
                 .put("operation", operation)
                 .put("phoneHash", hashPhone(phone))
@@ -53,6 +58,7 @@ class MonitorLockClient {
             val request = Request.Builder()
                 .url(MonitorLockConfig.FUNCTION_EXECUTION_URL)
                 .header("X-Appwrite-Project", MonitorLockConfig.PROJECT_ID)
+                .header("X-Appwrite-Key", apiKey)
                 .header("Content-Type", "application/json")
                 .post(execution.toString().toRequestBody("application/json".toMediaType()))
                 .build()

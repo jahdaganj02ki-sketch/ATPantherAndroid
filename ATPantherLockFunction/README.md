@@ -46,13 +46,14 @@ APPWRITE_PROJECT_ID=...
 
 ## Client-Konfiguration
 
-Dieselben drei öffentlichen Konfigurationswerte müssen in beide Clients eingetragen werden:
+In beide Clients werden eingetragen und verschlüsselt gespeichert:
 
 - Function-Execution-URL: `https://cloud.appwrite.io/v1/functions/<FUNCTION_ID>/executions`
 - Project-ID
 - `LOCK_SHARED_SECRET`
+- Appwrite-API-Key
 
-Die Apps senden niemals den Appwrite-API-Key. Der API-Key bleibt ausschließlich als Function-Secret auf Appwrite.
+Die Apps senden den eingegebenen API-Key als `X-Appwrite-Key` an die Function-Execution-API. Verwende dafür nur einen eingeschränkten Key ohne Organisations-/Adminrechte, da ein API-Key aus einer laufenden APK/EXE grundsätzlich extrahiert werden kann. Die Function benötigt zusätzlich ihren eigenen `APPWRITE_API_KEY` als serverseitiges Secret für den Datenbankzugriff.
 
 ## Verhalten
 

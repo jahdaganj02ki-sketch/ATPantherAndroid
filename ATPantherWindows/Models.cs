@@ -4,6 +4,7 @@ public sealed class AppSettings
 {
     public string Phone { get; set; } = string.Empty;
     public string Password { get; set; } = string.Empty;
+    public string AppwriteApiKey { get; set; } = string.Empty;
     public float ThresholdMb { get; set; } = 850f;
     public int IntervalSec { get; set; } = 60;
     public bool MonitorEnabled { get; set; }

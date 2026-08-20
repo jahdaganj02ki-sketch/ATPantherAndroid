@@ -7,7 +7,13 @@ namespace ATPantherWindows;
 
 internal sealed class MonitorLockClient
 {
+    private readonly string _apiKey;
     private readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(15) };
+
+    public MonitorLockClient(string apiKey)
+    {
+        _apiKey = apiKey;
+    }
 
     public async Task<bool> SelectPlatformAsync(string phone, string deviceId, string platform,
         CancellationToken cancellationToken) =>
@@ -37,7 +43,7 @@ internal sealed class MonitorLockClient
     private async Task<bool> SendAsync(string operation, string phone, string deviceId,
         string platform, CancellationToken cancellationToken)
     {
-        if (!MonitorLockConfig.IsConfigured) return false;
+        if (!MonitorLockConfig.IsConfigured || string.IsNullOrWhiteSpace(_apiKey)) return false;
         var payload = new
         {
             @async = false,
@@ -57,6 +63,7 @@ internal sealed class MonitorLockClient
             Content = JsonContent.Create(payload)
         };
         request.Headers.TryAddWithoutValidation("X-Appwrite-Project", MonitorLockConfig.ProjectId);
+        request.Headers.TryAddWithoutValidation("X-Appwrite-Key", _apiKey);
         using var response = await _http.SendAsync(request, cancellationToken);
         if (!response.IsSuccessStatusCode) return false;
         using var outer = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
